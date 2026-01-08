@@ -1,0 +1,17 @@
+# Ignore PyInstaller build artifacts
+build/
+dist/
+*.spec
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore executables
+*.exe
+
+# Ignore VS Code settings
+.vscode/
+
+# Ignore minor versions
+Minor_Versions/
