@@ -7,7 +7,7 @@ Journey To Winter Haven is a text-based RPG built in Python. You enter a monster
 ## Features
 
 - Turn-based combat with attack, defence, AP, and special moves
-- 14 unique monsters, each with their own special attack patterns
+- 18 unique monsters, each with their own special attack patterns
 - Level-up system with stat points, skill points, and a full skill tree
 - Title system — earn equippable titles mid-run (River Warrior, Jack of All Trades)
 - Fate titles and achievements tracked separately for end-of-run summaries
@@ -21,6 +21,9 @@ Journey To Winter Haven is a text-based RPG built in Python. You enter a monster
 
 ## How to Play
 
+### Play in Browser (No Download Required)
+Try the latest demo instantly — no Python or install needed:
+[Play Winter Haven Journey on Replit](https://replit.com/@Umbra41/Winter-Haven-Journey)
 ### Running From Source
 
 Requires **Python 3.11+**. All files must be in the same folder.
