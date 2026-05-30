@@ -2,7 +2,9 @@
 
 Journey To Winter Haven is a text-based RPG built in Python. You enter a monster tournament as a captured adventurer, fight your way through increasingly dangerous opponents, and face a moral decision that will define your legacy — and your child's destiny.
 
-## Current Version: v0.6.14
+## Current Version: v0.6.21 — Demo
+
+> **Status: Active Demo** — Playable from source. itch.io terminal release coming soon.
 
 ## Features
 
@@ -12,14 +14,17 @@ Journey To Winter Haven is a text-based RPG built in Python. You enter a monster
 - Title system — equippable titles mid-run (River Warrior, Jack of All Trades, True Jack of All Trades, Death's Apprentice, and more)
 - Fate titles and achievements tracked separately for end-of-run summaries
 - Moral choice system — Guardian and Dark Champion endings with distinct stat identities
-- Potions, consumables, and crafting materials (crafting system coming next)
+- Potions, consumables, and crafting materials
+- Crafting system — recipe-based item creation from monster essences and loot
+- Merchant shop with persistent inventory between rounds
+- Gold and currency system
 - Equipment and loot system with rarity tiers (poor through mythril)
 - Trinket system — Charged Jagged Rock (offensive psychic pool) and Waterlogged Stone (defensive AP battery)
 - Monster essence collection influencing story progression
-- Merchant shop with persistent inventory between rounds
 - Multiple endings based on decisions, performance, and morality
 - Story-driven narrative with branching choices and replay value
 - Full combat log with pagination
+- Leaderboard and scoring system
 - Debug menu for testing and development
 
 ## How to Play
@@ -29,45 +34,41 @@ Journey To Winter Haven is a text-based RPG built in Python. You enter a monster
 Requires **Python 3.11+**. All files must be in the same folder.
 
 ```
-python Journey_To_Winter_Haven_v_06_10.py
+python Journey_To_Winter_Haven_v_06_21.py
 ```
 
 ### Required Files
 
-The following files must be present in the same directory as the main script:
+All of the following files must be present in the same directory:
 
 | File | Purpose |
 |------|---------|
-| `Journey_To_Winter_Haven_v_06_10.py` | Main game |
-| `combat_log.py` | Combat logging module |
-| `titles.py` | Title and achievement system |
+| `Journey_To_Winter_Haven_v_06_21.py` | Main game |
 | `monsters.py` | Monster classes, special moves, encounter logic |
-| `score.py` | Run scoring system |
 | `merchant.py` | Merchant shop system |
+| `crafter.py` | Crafting system |
 | `gold.py` | Currency tracking |
 | `shared.py` | Shared utilities and display helpers |
-
-### Windows Executable
-
-A `.exe` build is available on the Releases page for players who don't have Python installed:
-https://github.com/UmbraShadow39/Journey-To-Winter-Haven/releases/latest
+| `score.py` | Run scoring system |
+| `leaderboard.py` | Leaderboard tracking |
+| `combat_log.py` | Combat logging module |
+| `titles.py` | Title and achievement system |
 
 ## Project Structure
 
 ```
-Journey To Winter Haven V.06/
-├── Journey_To_Winter_Haven_v_06_10.py   # Main game file (current)
-├── combat_log.py                         # Combat log module
-├── titles.py                             # Title system module
+Journey-To-Winter-Haven/
+├── Journey_To_Winter_Haven_v_06_21.py   # Main game file (current)
 ├── monsters.py                           # Monster classes and special moves
-├── score.py                              # Scoring system
 ├── merchant.py                           # Merchant shop
+├── crafter.py                            # Crafting system
 ├── gold.py                               # Currency module
 ├── shared.py                             # Shared utilities
-├── Old .6 builds/                        # Patch-level history (v0.6.01 through v0.6.09)
+├── score.py                              # Scoring system
+├── leaderboard.py                        # Leaderboard system
+├── combat_log.py                         # Combat log module
+├── titles.py                             # Title system module
 ├── Major_Versions/                       # Archive of major milestones
-│   ├── v0.1.2/
-│   ├── v3.18/
 │   ├── v4.28/
 │   └── v0.5.14/
 ├── CHANGELOG.md                          # High-level version history
@@ -79,16 +80,17 @@ Journey To Winter Haven V.06/
 
 ## Roadmap
 
-### Demo Target — May 2026 (itch.io terminal release) — in progress
-- Remaining monsters designed and implemented ✅
+### Demo — v0.6.21 (May 2026) ✅
+- Full monster roster designed and implemented ✅
 - Hidden boss fights tied to moral choice system ✅
 - Fallen Warrior desperation phase fully tuned ✅
-- Title system foundation ✅
-- Mastery titles for all 5 skills ✅
-- Crafting system (next major feature)
+- Title and mastery system for all 5 skills ✅
+- Crafting system ✅
+- Merchant and gold system ✅
+- Leaderboard and scoring system ✅
 
 ### v0.7 and Beyond
-- Crafting system — recipe-based item creation from monster essences and loot
+- itch.io terminal release
 - pygame conversion — December 2026
 - Godot 2D / Steam Early Access — May 2027
 - Additional skill tiers (tier 2 and 3 unlocks gated behind Jack of All Trades)
