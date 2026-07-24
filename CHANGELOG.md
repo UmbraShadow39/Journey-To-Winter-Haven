@@ -7,6 +7,269 @@ For full version-by-version detail see [DEVLOG.md](DEVLOG.md).
 
 ---
 
+## v0.7.18 — Champion Difficulty Fix, Mastery Rework, Armor Socket Expansion, End-Game Polish
+*July 23, 2026 | Session 25 | Playtest-driven fixes from live Champion runs (Patronus & Dark Champion paths)*
+
+Major playtest session that uncovered a stale-multiplier bug silently weakening every Champion run since v0.7.11, reworked the Brawl Master mastery, expanded armor sockets to support six new item types, fixed the boss intervention timing, and added end-game narrative foreshadowing. Files changed: `Journey_To_Winter_Haven_v_07_17.py`, `combat.py`, `crafter.py`, `equipment.py`, `monsters.py`, `titles.py`, `score.py`, `combat_log.py`, `leaderboard.py`, `gold.py`.
+
+**Critical bug fix:**
+- **Champion difficulty multipliers were never actually 1.50x.** The main file held stale copies of the five `DIFFICULTY_*_MULT` tables (pre-v0.7.11 values) and injected them into `combat.py` at import, silently overriding the intended values. Boss stats ran at 1.30x instead of 1.50x, score at 1.35x instead of 1.50x, gold at 1.25x instead of 1.50x. Fix: main now imports all five tables from `combat.py` (single source of truth). Every Champion run prior to this fix was against weaker bosses paying less score/gold than designed.
+
+**Bug fixes:**
+- **Boss intervention gated on combat_cycles instead of rounds survived.** The lose-with-dignity path checked `combat_cycles >= 4`, but cycles only tick at the end of the enemy's turn — dying during a boss's turn lost that tick. Fix: both Chimera and Patronus interventions now gate on `rounds_survived >= 5` (on-screen round number).
+- **Champion difficulty select screen showed stale multiplier text** (1.35x score, 1.25x gold instead of 1.5x/1.5x). Updated to match actual values.
+
+**Mastery rework:**
+- **Brawl Master** (Power Strike Rank 5 mastery) changed from flat +2 min/max ATK to a permanent **20% ATK multiplier**. Scales with gear/stats/dual-wield instead of being a fixed add. Power Strike Rank 5 impact scaling bumped from 100% to 120% of base roll — total PS R5 output is now 220% of base.
+
+**Armor socket expansion — six new item types:**
+- **Reinforcement Crystals** (AP/HP/Defence/ATK) now socketable into armor. Grant their stat bonus at 75% socket power with live delta application on insert/remove.
+- **Javelina Tusk / Sharpened Tusk** — "Spiked Armor": enemies that land a basic attack on the player take retaliation bleed (tusk's own stats at 75% socket power). Does not proc on DoT damage.
+- **Soul Pendant** — "Soul Ward": player heals HP when hit by enemy basic attacks (pendant's drain_heal stats at 75% socket power). Defensive mirror of weapon-socket drain.
+
+**Balance:**
+- **Wolf Pup Rider** base DEF reduced 5 → 4. Hardened + Champion was hitting 7 DEF, too close to the Fallen Warrior boss (9 DEF at Champion).
+- **SS rank threshold** bumped 9,000 → 9,500. First real 1.50x Champion score (9,237, Dark Champion female run) landed SS too comfortably — God Champion should require optimization.
+
+**New features:**
+- **Big Spender title latch**: now locks the instant gold first hits exactly 0 (in `spend_gold`), so gold earned later (e.g. Patronus path's +100 gold) can no longer void it.
+- **Weapon-weakening foreshadowing** added to both victory endings. Good/flee path: the blade goes quiet as the hero escapes. Evil/Beast Gods path: the weapon dulls under the brand. Flavour only — diegetic justification for the Game 1→2 weapon reset.
+- **End-of-run prompt de-duplication**: three back-to-back screens now name themselves ("close the score screen", "close the combat log", "finish your run") instead of identical "Press Enter to continue..." prompts.
+
+**Title update:**
+- Game renamed to **Journey to Winter Haven: A New Champion Rises**.
+
+---
+
+## v0.7.17 — Bug Fix Sweep, Pelt Curing & Armor Sockets, Reinforcement Crystals
+*July 7, 2026 | Session 24 | Chat-driven bug hunt that grew into a full crafting system build*
+
+Started as a handful of real bugs traced back from lost fights and frustrating moments in actual play, then expanded into finishing off the "Coming Soon" armor socket system that's been stubbed out since v0.6.20. Files changed: `combat.py`, `ui.py`, `equipment.py`, `merchant.py`, `shared.py`, `crafter.py`, `Journey_To_Winter_Haven_v_07_17.py`.
+
+**Bug fixes:**
+- **Flayed One debuff rewritten to track deltas incrementally** instead of a stale "snapshot once, recompute from it" pattern — a mid-fight Defence stat point no longer gets silently erased the next time the enemy's charge count ticks up.
+- **Skill Rank-Up Potion no longer wipes banked partial SP.** Using the potion on a skill with SP already invested toward its next rank used to zero that progress out on rank-up; it now carries forward toward the new next rank.
+- **base_defence desync bug fixed** — the main Level-Up Menu's "+1 Defense" option and the Stat Point Potion's "+1 Defense" option only ever updated `hero.defence`, never `hero.base_defence`. Since end-of-fight cleanup fully recomputes defence from `base_defence` (the v0.7.12 Defence Warp fix), any point spent this way was silently erased after the very next fight. Both paths now update both.
+- **Merchant weapon tier-pricing bug fixed** — Goblin Shortbow and Goblin War Blade were missing the `tier` attribute in the merchant's stock factories (present in the drop-table version), so both silently priced as tier-1 alongside a basic Rusted Sword. Normal-rarity War Blade: 10g → 30g.
+- **Equip routing now warns before an untrained off-hand weapon.** Equipping a second one-handed weapon used to silently drop it in the off-hand (half damage without Dual Wielder training) with zero warning — now asks first, with the option to replace main-hand instead.
+- **Chimera's Fury Overload could burn a fresh Death Defier save and then kill you anyway** with the same combo's follow-up hit, same enemy turn, no chance to react. The follow-up Primordial Surge now withholds if Death Defier just fired on the preceding basic attack.
+
+**New: Pelt Curing & Armor Sockets** (previously a "Coming Soon" stub since v0.6.20):
+- Armor socket counts rebalanced: Poor/Normal 0, Uncommon 1, Rare/Epic 2, Legendary 3, Mythril 4.
+- Raw Wolf Pelt / Dire Wolf Pelt remain directly wearable as basic armor. New crafter action **Cure Pelts** (flat 5g) turns one into a Cured Pelt — a dedicated crafting material, not wearable itself.
+- Cured Pelts can now actually be socketed into any armor piece (real insert/remove UI, not a preview) for an always-on +DEF/+HP reinforcement at 75% power, floored at +1/+1 minimum.
+- Wolf-Hide / Dire Wolf recipes reworked: they now require Cured Pelts (not raw), and the crafted piece's stats AND gold cost scale with the pelt's rarity (Poor through Mythril) — replacing the old fixed-stat/discount-for-rarity model, so a high-rarity pelt is never "wasted" on a recipe.
+- New **Reinforcement Crystal** components (AP/HP/Defence/ATK), sold only by the crafter with their own full rarity tiers and a simple linear per-tier bonus (Poor +1 up to Mythril +7, scaled per crystal type). Wolf-Hide/Dire Wolf Hood now requires an AP Crystal, Cloak an HP Crystal — each piece's crystal-derived bonus scales independently from the pelt's rarity.
+- Champion difficulty's shop rarity ceiling extended to a genuine independent 20% chance at Epic (pelts and crystals alike), mirroring the merchant's existing epic-weapon-variant roll exactly.
+- Crafter stock scarcity: every component type now independently rolls a 75% chance to appear at all per visit (guaranteed-minimum-2 stock still applies when it does) — nothing the crafter sells is a sure thing anymore, matching how merchant gear already works.
+
+---
+
+## v0.7.16 (pending) — Bar Recoloring, Bleed-Cleanse Fix, War Cry/Defence Break Damage Rework, Assassin's Strike
+*July 6, 2026 | Session 23 | Sparked by a real Champion-run death to Hardened Goblin Warrior's bleed stacking*
+
+A chat-driven session that started as a small visual tweak and snowballed into a real bug fix, two skill reworks, and a brand-new hidden move, after a lost Champion run traced back to a cleanse potion silently not doing its job. Files changed: `ui_bars.py`, `combat.py`, `hero.py`.
+
+- **HP bars now color-coded by identity, not just health state:** enemies render in a red family (bright → dark red as they die), heroes in blue, with a hard override to red under 25% HP so the classic "low health" warning cue is preserved. Previously both sides used the same green/yellow/red convention, making them visually identical apart from the label.
+- **Bug fix: Frostpine Tonic and Cure-All Tonic never cleared bleed.** Both potions' "clear all status effects" block was missing `bleed_turns` and `warrior_bleed_dots` (the Goblin War Blade/Pack Hunter-style stacking bleed) — confirmed as the direct cause of a lost Champion run against Hardened Goblin Warrior, whose Savage Slash bleed stacks were uncleansable. Both potions now clear bleed correctly.
+- **War Cry and Defence Break now deal real damage** instead of being pure no-damage buff/debuff. War Cry lands a main-hand strike with the same rank% as bonus damage, on top of its existing ATK buff. Defence Break strikes through the freshly-lowered DEF it just created, instead of only dealing damage in the corner case of DEF hitting exactly 0 (that case still adds +1 true damage on top).
+- **New hidden capstone: Assassin's Strike.** Unlocks automatically at Power Strike Rank 5 + Dual Wielder Rank 5 + two weapons equipped — no separate skill point needed. Both weapons swing as one attack (summed rolls) with a flat +75% fusion bonus, and each weapon independently rolls its own 75% proc chance (vs. main-hand's normal guaranteed proc / off-hand's normal 50% at Dual Wielder R5). Costs 3 AP.
+- **Dual Wielder now actually matters for Power Strike, War Cry, and Defence Break** when two weapons are equipped — previously these three skills only ever rolled the main-hand weapon, so a dual-wielder's second weapon contributed nothing. Gated correctly on skill rank: two weapons equipped with 0 ranks in Dual Wielder (untrained) still only hits with the main hand, exactly as before.
+- **Bonus-stacking gap closed:** War Cry, Defence Break, and Assassin's Strike now pick up adrenaline/Berserk/equipment bonus damage/an already-active War Cry buff as a flat addition, same as every normal attack and Power Strike already did. Previously these three moves' own strikes ignored all of that.
+- **Balance pass:** confirmed via simulation (20,000 casts) that a dual-wielding Power Strike Rank 5 was outperforming Assassin's Strike on both raw damage and damage-per-AP — the capstone move was strictly worse than a component skill. Assassin's Strike's AP cost dropped 4 → 3 to close most of that gap; the remaining edge to Power Strike is accepted as fine, since Assassin's Strike's real value is its double-proc potential (bleed/poison/acid/blind landing together), not raw numbers.
+
+---
+
+## v0.7.15 (pending) — Rich HP/AP Bars
+
+*July 5, 2026 | Session 22 | Kept separate from the v0.7.14 balance pass, which is still pending its own playtest*
+
+Added a visual bar rendering layer using the `rich` library, replacing plain "current/max" number prints with color-coded bars (green above 50%, yellow 25–50%, red below 25%) for HP and AP. New `ui_bars.py` module — `hp_line()`, `ap_line()`, `sp_line()` — falls back to plain text automatically if `rich` isn't installed, so it's safe to import anywhere. Wired into `combat.py`: all potion-use HP/AP displays (heal/super/mega/full potions, all AP potion tiers, the Elixir combo restore) and the post-attack enemy HP display now render as bars. `rich` and `ruff` (dev linter) added to `requirements.txt`.
+
+---
+
+## v0.7.14 (pending) — Champion Balance Pass, Combat Detail Toggle, Tusk Sharpening Rework, Chimera Turn-Skip Fix
+*July 1, 2026 | Session 21 | Playtested live against Champion difficulty during the session*
+
+A tuning-heavy session sparked directly by a Champion run in progress — balance numbers got checked against real combat math as they came up, and one real death (poison + a Chimera paralyze chain with zero counterplay) turned into a boss-fairness fix. Files changed: `Journey_To_Winter_Haven_v_07_13.py`, `combat.py`, `equipment.py`, `crafter.py`, `monsters.py`.
+
+### Champion Difficulty — Score Multiplier Rebalanced
+- `DIFFICULTY_SCORE_MULT["champion"]`: 1.50 → **1.35**, brought in line with the boss stat multiplier (1.30) instead of overshooting it
+- Fixed a stale hardcoded string on the difficulty-select screen that still read "1.5x score" after the multiplier changed — now pulled in sync
+
+### New: Combat Detail Toggle
+- New one-time prompt at game start (right after difficulty select): **Summary** (default, final damage number only) or **Full breakdown** (per-hand dual-wield split printed on every dual-wield swing)
+- The main/off-hand breakdown math already existed but was gated behind `debug_mode` only — now available to anyone without needing debug tools, similar to the Replit sister project's own combat-detail setting
+- New `COMBAT_DETAIL` global, synced into `combat.py` the same way `DIFFICULTY` already is
+
+### Imp Trident — Rare Through Mythril Rebalanced
+- **Bug:** Rare tier was numerically identical to Uncommon (2/2 ATK, 50% proc) — only proc bonus differed. A whole rarity tier added nothing.
+- Rare → Mythril now step in a clean +1 ATK / +1 proc bonus / +10% proc chance staircase per tier: Rare 3/3 @ 60% (+2), Epic 4/4 @ 70% (+3), Legendary 5/5 @ 80% (+4), Mythril 6/6 @ 90% (+5)
+
+### Javelina Tusk Sharpening — Full Rework
+- **Gold cost** now scales with the tusk's input rarity (5g Poor → 35g Mythril, +5g per tier) instead of a flat 15g regardless of rarity
+- **Rarity bump:** sharpening now produces a Sharpened Tusk ONE rarity tier above the tusk you fed in (Normal → Uncommon, Rare → Epic, etc.) — previously the output matched input rarity exactly, so it was a same-tier stat remix, not real progression
+- **Bleed stats computed live:** bleed turns / bleed damage are now 50% up from the RAW Javelina Tusk's own numbers at input rarity (rounded up, minimum 1) — output bleed scales with what you fed in rather than a fixed table. ATK bonus still comes from the static table, keyed to the new output rarity
+- **New: Mythril+ tier**, exclusive to this one item — sharpening a Mythril tusk no longer caps out with "nowhere higher to go," it produces a Mythril+ Sharpened Tusk instead
+- Built via a new extensible `EXTRA_RARITY_TIERS` registry in `equipment.py` — deliberately scoped so it does NOT touch the global `RARITY_ORDER` used everywhere else (merchant pricing, drop tables, other recipes). Adding a "+" tier for a different item later is just a new registry entry plus an `overrides` dict, following the same pattern
+
+### Chimera — Turn-Skip Fairness Fix
+- **The problem:** the "Arena intervenes" mercy mechanic that breaks consecutive turn-skip chains for every other monster in the game is explicitly disabled for Young Chimera. Combined with 2 full hard-locked turns on both paralyze and blind, a poison + paralyze chain could kill a player with zero turns of agency and two free, unanswered Chimera actions (including its passive heal) in between — confirmed as the actual cause of a Session 21 death, not bad luck
+- Chimera's paralyze and blind both reduced from **2 hard-locked turns → 1**
+- New: a single **weakened follow-up turn** replaces the old second hard lock — player can act, but the swing lands at 50% damage. New `chimera_weakened_multiplier()` in `combat.py`, wired into both basic attack and Power Strike, consumed on read (single-turn flag)
+- Scoped entirely to Chimera's own move branches (`blinding_charge`'s `is_chimera` path, the dispatcher's `paralyzing_shot` call) — regular monster paralyze/blind (Goblin Archer, standard blind procs) untouched
+- Poison damage and passive heal (15% on Champion) confirmed as-is, no changes — the death was a turn-skip stacking problem, not a numbers problem
+
+---
+
+## v0.7.13 (pending) — Dual Wielder Full Build-Out, Power Strike/War Cry Decoupling, Arena Inheritance Lore
+*June 27, 2026 | Session 19 | Built remotely (tablet, no dev environment) — needs playtesting before version is finalized*
+
+Picked up the Dual Wielder full rank system sketched out back in Session 18 and actually built it — then caught and fixed a real damage-compounding bug along the way. Also closed a loop on lore design (Arena Inheritance / genetic markers) that had been discussed in past sessions but never made it into LORE.md.
+
+### Dual Wielder — Full Rank System, Built
+- Rank 1 (unchanged, was already live): off-hand deals full damage instead of half
+- Ranks 2-5 ATK% bonus **actually implemented** — was description-only before tonight. New values: +10/+15/+20/+25%
+- Skill point costs changed to a flat 1/2/3/4/5 scale (was 1/2/3/4/4)
+- Rank 5: off-hand now gets its own separate 50% chance to fire weapon-native procs (trident, blind, rot, bleed) on a hit — main-hand's own proc chance is completely unaffected
+- **New `Assassin` mastery title** scaffolded at rank 5 — 250 score points, slots into the existing mastery-title tier alongside Brawl Master/Combat Medic/etc. The passive 10%-chance bleed effect itself is **not yet implemented** — dmg/turns numbers still need confirming, flagged as TODO in code
+
+### Critical Fix — Power Strike / War Cry Damage Compounding
+- **Found:** Dual Wielder's bonuses were baked directly into the hero's general ATK stat, which Power Strike and War Cry both read from — so a fully-ranked dual wielder's "impact" math was compounding on top of an already-inflated base roll (~4-5x instead of the intended ~2x)
+- **Fixed:** Power Strike and War Cry now calculate as if powered by the main-hand weapon alone (same idea as a D&D feature that only triggers on your primary attack) — basic attacks are unaffected and still get full dual-wield benefit
+
+### Dual Wield Damage Model — Reworked
+- Replaced the original "pool both weapons into one shared ATK range" model with **two independent rolls, summed** — main-hand and off-hand each roll their own range now
+- Rank 0 (untrained) halves the off-hand roll specifically, instead of pre-baking the penalty into a static stat
+- Rank 2-5's ATK% now applies to the *summed total* of both rolls
+- This also simplified the Power Strike/War Cry fix above considerably — those skills now just read the hero's normal ATK stat directly, since off-hand is never pooled into it in the first place
+
+### Lore — Arena Inheritance & Genetic Markers
+- New LORE.md section: difficulty selection (Noob/Warrior/Champion/Debug) confirmed as arena-only content, never a main-story setting
+- Umbra's original Prologue Arena run established as the first instance of the same "one perfect run, then roguelike forever" system the son will use on every arena he discovers later
+- Reconciled an April 2026 design decision that had never made it into LORE.md — title stat buffs persist whether equipped or not, and the son inherits them silently (no title shown), surfaced via a path-dependent flavor line
+- Clarified resets are to **Arena Level** only, never the character's actual main-game level
+- Added the "Mario Kart cup" framing — each newly discovered arena pays gold once on first clear, then folds permanently into one shared roguelike pool with its own score system
+
+---
+
+## v0.7.12 — Global Leaderboard, Defence Warp Fix, Solforged/Voidforged Scaling, Debug Overhaul
+*June 12, 2026 | Session 17*
+
+Largest single-session update of the v0.7 era. Global leaderboard live on Supabase, foundational defence architecture fixed, weapon core difficulty scaling implemented, debug system overhauled, and major lore pass completed.
+
+### Global Leaderboard (Supabase)
+- **Live on Supabase** — REST API backend, Oregon region, free tier
+- Four difficulty tiers: 🛡️ Noob, ⚔️ Warrior, 👑 Champion, 🐛 Debug ("How Badly Can You Break It?")
+- Top 25 per difficulty, submitted automatically after each run
+- Credentials loaded from `.env` file — never hardcoded, safe for GitHub
+- **Debug run detection** — `warrior.debug_mode = True` flags the run on first debug menu entry
+- Warning screen shown once per run: *"Debug Mode Activated — your run routes to the Debug board"*
+- Offline-safe — if Supabase unreachable, local leaderboard still works
+- Main menu updated: `[2] View Local Leaderboard`, `[3] View Global Leaderboard 🌐`, `[4] Quit`
+- First ever entry: "Debug King, S rank, Coward, 5667 pts" 🐛
+
+### Defence Warp — Architecture Fix
+- **Root cause identified:** delta-restore pattern broke when title buffs and set bonuses were stacked — `defence_warp_original_defence` captured a stale baseline
+- **Fix:** added `base_defence` field to Warrior — tracks stat-point defence only, no gear
+- New `recalculate_defence(hero)` in `equipment.py` — recomputes from `base_defence + gear + set bonuses`
+- `clear_all_status_effects` and `reset_between_rounds` now call `recalculate_defence()` instead of delta restore
+- `award_title_with_buff`, Jack of All Trades, and random level buff now increment `base_defence` alongside `hero.defence`
+- `reset_between_rounds()` called after Fallen Warrior "win" result in `arena_battle()` — was previously skipped
+
+### Weapon Core — Difficulty Scaling (Solforged Steel / Voidforged)
+- Weapon core material names canonised: **Solforged Steel** (good path), **Voidforged** (evil path)
+- Stats now scale with difficulty — Noob fixed, Warrior fixed, Champion rolls uncommon or rare variant
+- Champion variant rolled BEFORE player chooses 1H/2H — shows real numbers upfront
+- DEF penalty on evil path: `floor(ATK / 2)` — scales cleanly at every tier
+- Lightrender, Destiny Definer, Duskbringer, Destiny Destroyer all show material name in selection screen
+- Old `WEAPON_CORE_ONEHANDED_STATS` / `WEAPON_CORE_TWOHANDED_STATS` kept as aliases
+
+### Debug System Overhaul
+- **Rarity bug fixed** — `globals()` hack replaced with `make_loot(forced_rarity=chosen_rarity)` — patch was only affecting `debug.py` namespace, never reaching `equipment.py` where `roll_rarity` lives
+- **Lightrender/Destiny Definer split** — was one entry, now four separate entries: Lightrender, Destiny Definer, Duskbringer, Destiny Destroyer
+- **Weapon core keys added** to DEBUG_ sentinel handler in both mode A and mode B — bypasses path-dependent `make_loot` logic
+- **Dual Wielder fix** — granting via title menu now auto-sets `skill_ranks["dual_wielder"] = 1` so the title actually functions
+
+### Balance
+- `DIFFICULTY_BOSS_MULT` Noob bumped from 0.80 → 0.90 — regular monsters stay 0.80, bosses deserve more HP
+- Patronus base HP rebased to 162 effective (was 135) so Noob/Warrior/Champion scale feels right
+- Chimera 2-turn kill on Noob identified as too easy — boss multiplier fix addresses this
+
+### End of Run
+- **Final stats screen** added before score breakdown — shows difficulty, level, HP, AP, ATK, DEF, gold, titles earned, skills at final rank
+
+### Lore
+- Full **Solforged Steel & Voidforged** lore entries in `LORE.md`
+- **Boss loot grade system** designed — Chimera drops Voidforged Scale purified by divine blood → Solforged Breastplate; Patronus drops Solforged Shield/Breastplate corrupted on contact → Voidforged (contextual 1H/2H)
+- **Grade progression** documented: Fractured/Brittle → Worn → Tempered → Refined → Pure Solforged/True Voidforged
+- Set bonus compounding across grades established
+
+---
+
+
+*June 2026 | main: ~2,543 lines | 9 modules extracted*
+
+The v0.7 era is defined by two parallel workstreams: a full modular refactor of the codebase (14,601 → 2,543 lines in main) and a substantial feature/balance pass. The refactor is now complete. Main is a thin orchestrator; all game logic lives in purpose-built modules.
+
+### Modular Refactor — Complete
+
+Starting from `Journey_To_Winter_Haven_v_06_21.py` at 14,601 lines, the main file was systematically broken into modules across v0.7.01–v0.7.10:
+
+| Module | Lines | Contents |
+|--------|-------|----------|
+| `hero.py` | ~1,573 | Hero/Warrior classes, skill system, SKILL_DEFS |
+| `equipment.py` | ~1,100 | equip/unequip, inventory menu, loot generation |
+| `ui.py` | ~324 | Meters, bars, XP animation, state refresh |
+| `combat.py` | ~5,800 | Full combat engine, special moves, battle loop |
+| `story.py` | ~2,161 | Prologue, interludes, narrative flow |
+| `debug.py` | ~990 | Debug menu, skill/loot/title/potion editors |
+| `shared.py` | existing | Extended with new Equipment params |
+| `monsters.py` | existing | Extended with difficulty scaling |
+| `score.py` | existing | Extended with difficulty multiplier |
+| `leaderboard.py` | existing | Extended with difficulty column |
+| **main** | **2,543** | Game loop, menus, difficulty, orchestration |
+
+**Architecture pattern used throughout:** functions that needed to call back into main (to avoid circular imports) were handled via runtime stubs — `None` placeholders defined at module level, injected by main after import via `import module as _m; _m.fn = lambda: fn()`. This pattern was used in `combat.py`, `story.py`, `hero.py`, `equipment.py`, and `debug.py`.
+
+### Difficulty System
+
+New difficulty selection at new game start, locked for the run:
+
+| | 🛡️ Noob | ⚔️ Warrior | 👑 Champion |
+|---|---|---|---|
+| Regular monsters | ×0.90 | ×1.0 | ×1.20 |
+| Bosses (Chimera/Patronus) | ×0.90 | ×1.20 | ×1.30 |
+| Fallen Warrior | ×0.90 | ×1.0 | ×1.20 |
+| Score | ×0.75 | ×1.0 | ×1.50 |
+| Gold | ×0.75 | ×1.0 | ×1.25 |
+| Loot drops | normal | normal | rare possible |
+| Merchant epic gear | no | no | 20% chance |
+
+Difficulty stored on `warrior.difficulty`, displayed in score screen and leaderboard.
+
+### Bug Fixes
+
+- **Death Defier not triggering on DoT deaths** — `try_death_defier` in `shared.py` had signature `(hero, reason="")` missing `enemy=None`, so combat's `try_death_defier(warrior, "dot", enemy=enemy)` silently failed. Fixed.
+- **DoT deaths not respecting Chimera/Patronus intervention threshold** — dying to poison/acid on your player turn now checks `combat_cycles >= 4` and routes through intervention correctly.
+- **Defence Break not clearing before final boss** — `reset_between_rounds(full_rest=True)` now fires on both good and evil paths before boss fight.  
+- **Player stats reduced going into final boss** — caused by `reset_between_rounds(full_rest=False)` being called after Fallen Warrior death; now `full_rest=True` so Defence Warp and Patronus DEF reduction are properly restored.
+- **`Equipment.__init__` silently dropping 8 new params** — `flavour`, `atk_bonus`, `max_rage_bonus`, `consume_on_use`, `berserk_turns`, `rot_chance`, `rot_stacks`, `rot_hp_per_stack` were in the signature but never assigned to `self`. All fixed.
+- **Berserk trinket invisible in combat menu** — caused by the above; `consume_on_use` always returned False so `has_trinket` was never True.
+- **Merchant crash on stats lookup** — `merchant.py` was looking up weapon stat tables on `main` module; now imports directly from `equipment.py`.
+- **Waterfall path deaths not offering play again** — `sys.exit(0)` replaced with `prompt_play_again()` on both flayed and drowned death paths.
+- **2H → 1H weapon swap hard-blocking** — now prompts player to swap instead of refusing.
+- **Fallen Warrior difficulty not scaling** — `random_tier4_boss()` bypassed `apply_difficulty_scaling()`; fixed.
+- **Patronus/Chimera not scaling with difficulty** — `_apply_boss_difficulty()` was defined but never called; now applied after instantiation.
+
+### New Features
+
+- **Javelina Tusk redesigned** — changed from weapon to accessory. Raw tusk equips to accessory slot, procs bleed on hit. Crafter can sharpen it into Sharpened Tusk (better bleed + ATK bonus, costs 15g + tusk).
+- **Trinket of Berserk reworked** — weighted rarity system (50% appear chance). Poor: 1 turn/25g, Normal: 2 turns/35g, Uncommon: 3 turns/50g, Rare: 4 turns/65g. Turns now read from trinket object.
+- **Crafter set bonus display** — recipe menu now shows pieces equipped, active bonus, and next threshold with pieces needed.
+- **Debug title menu expanded** — all 21 titles now listed with buff notes, organized by category, duplicate protection added.
+
+
 ---
 
 ## v0.6.21 — Bug Fix Pass: Dev Shortcut Safety, Equipment Display, Score Flags, Primordial Surge Exploit

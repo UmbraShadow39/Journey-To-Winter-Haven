@@ -249,7 +249,8 @@ def view_combat_log():
         print("=" * 50)
 
         if total_pages == 1:
-            input("\nPress Enter to continue...")
+            # v0.7.20: names its own screen — see note in score.py
+            input("\nPress Enter to close the combat log...")
             return
 
         nav = []

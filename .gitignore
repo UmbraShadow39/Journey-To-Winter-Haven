@@ -1,17 +1,33 @@
-# Ignore PyInstaller build artifacts
-build/
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
 dist/
+build/
+*.egg
+
+# Environment
+.env
+*.env
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.exe
 *.spec
 
-# Ignore Python cache
-__pycache__/
-*.pyc
-
-# Ignore executables
-*.exe
-
-# Ignore VS Code settings
-.vscode/
-
-# Ignore minor versions
-Minor_Versions/
+# Scores (local player data)
+scores.json
+python_progress.json

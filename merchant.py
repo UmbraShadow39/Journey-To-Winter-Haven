@@ -192,8 +192,8 @@ CRAFTING_COMPONENT_NAMES = {
 }
 
 NO_RESALE_NAMES = {
-    "Tainted Champion's Breastplate",
-    "Chimera Scale",
+    "Chunk of Sol Metal",
+    "Chunk of Void Metal",
     "Lightrender",
     "Destiny Definer",
     "Walking Staff",
@@ -278,14 +278,18 @@ MERCHANT_RINGS = [
 # Trinkets are the "active utility" slot. Drop-table trinkets carry
 # charges or complex mechanics (Charged Jagged Rock, Waterlogged Stone).
 # The Berserk trinket gives a one-shot panic-button for the rage system.
+# v0.7.08: Now uses a weighted rarity table. 50% chance to appear at all.
+# Higher rarities are rarer but grant more berserk turns and cost more gold.
 #
-# Adrenaline migrated to MERCHANT_RINGS in v0.6.13 — passive stats fit the
-# ring slot, while the trinket slot now exclusively holds active mechanics.
-#
-# Format: (name, max_rage_bonus, consume_on_use, price)
-MERCHANT_TRINKETS = [
-    ("Trinket of Berserk",    0, True,  45),  # one-shot: crush → 2-turn berserk
+# Format: (rarity_label, berserk_turns, price, weight)
+# Weights are independent rolls — appearance chance listed for clarity.
+BERSERK_TRINKET_TABLE = [
+    ("poor",     1, 25, 75),   # 75% chance if appearing
+    ("normal",   2, 35, 50),   # 50% chance if appearing
+    ("uncommon", 3, 50, 25),   # 25% chance if appearing
+    ("rare",     4, 65, 10),   # 10% chance if appearing
 ]
+BERSERK_TRINKET_APPEAR_CHANCE = 0.50  # 50% chance it shows up at all
 
 
 # ============================================================
@@ -360,7 +364,7 @@ def _make_fixed_ring_factory(name, defence, max_hp, atk_min, atk_max, max_ap_bon
 def _make_fixed_trinket_factory(name, max_rage_bonus, consume_on_use):
     """Build a factory closure for a fixed-stat merchant trinket."""
     def factory(rarity):  # rarity ignored — fixed stats
-        Equipment = _find_main_module().Equipment
+        from shared import Equipment
         return Equipment(
             name           = name,
             slot           = "trinket",
@@ -369,6 +373,25 @@ def _make_fixed_trinket_factory(name, max_rage_bonus, consume_on_use):
             consume_on_use = consume_on_use,
         )
     return factory
+
+
+def _roll_berserk_trinket():
+    """
+    Roll whether the Trinket of Berserk appears and which rarity variant.
+    Returns (rarity_label, berserk_turns, price) or None if it doesn't appear.
+    """
+    import random
+    if random.random() > BERSERK_TRINKET_APPEAR_CHANCE:
+        return None  # 50% chance it doesn't show up this visit
+
+    total_weight = sum(w for _, _, _, w in BERSERK_TRINKET_TABLE)
+    roll = random.randint(1, total_weight)
+    cumulative = 0
+    for rarity, turns, price, weight in BERSERK_TRINKET_TABLE:
+        cumulative += weight
+        if roll <= cumulative:
+            return (rarity, turns, price)
+    return BERSERK_TRINKET_TABLE[0][:3]  # fallback to poor
 
 
 def _build_factories():
@@ -382,14 +405,13 @@ def _build_factories():
       - Boss / legendary drops excluded.
       - Plus 4 brand-new merchant-only armors and trinkets.
     """
-    main = _find_main_module()
-    if main is None:
-        raise ImportError(
-            "merchant.py could not locate the main game module. "
-            "Make sure merchant_scene is called from within the running game."
-        )
+    main = _find_main_module()  # still needed for wrap() and other helpers
+    from shared import Equipment
+    from equipment import (
+        RUSTED_SWORD_STATS, IMP_TRIDENT_STATS, GOBLIN_DAGGER_STATS,
+        GOBLIN_SHORTBOW_STATS, GOBLIN_WAR_BLADE_STATS,
+    )
 
-    Equipment = main.Equipment
 
     return {
         "weapon": [
@@ -397,48 +419,48 @@ def _build_factories():
                 name             = "Rusted Sword",
                 slot             = "weapon",
                 rarity           = r,
-                atk_min          = main.RUSTED_SWORD_STATS[r]["atk_min"],
-                atk_max          = main.RUSTED_SWORD_STATS[r]["atk_max"],
-                defence          = main.RUSTED_SWORD_STATS[r]["defence"],
-                rot_chance       = main.RUSTED_SWORD_STATS[r]["rot_chance"],
-                rot_stacks       = main.RUSTED_SWORD_STATS[r]["rot_stacks"],
-                rot_hp_per_stack = main.RUSTED_SWORD_STATS[r]["rot_hp_per_stack"],
+                atk_min          = RUSTED_SWORD_STATS[r]["atk_min"],
+                atk_max          = RUSTED_SWORD_STATS[r]["atk_max"],
+                defence          = RUSTED_SWORD_STATS[r]["defence"],
+                rot_chance       = RUSTED_SWORD_STATS[r]["rot_chance"],
+                rot_stacks       = RUSTED_SWORD_STATS[r]["rot_stacks"],
+                rot_hp_per_stack = RUSTED_SWORD_STATS[r]["rot_hp_per_stack"],
             )),
             ("Imp Trident", lambda r: Equipment(
                 name        = "Imp Trident",
                 slot        = "weapon",
                 rarity      = r,
-                atk_min     = main.IMP_TRIDENT_STATS[r]["atk_min"],
-                atk_max     = main.IMP_TRIDENT_STATS[r]["atk_max"],
-                proc_chance = main.IMP_TRIDENT_STATS[r]["proc_chance"],
-                proc_bonus  = main.IMP_TRIDENT_STATS[r]["proc_bonus"],
+                atk_min     = IMP_TRIDENT_STATS[r]["atk_min"],
+                atk_max     = IMP_TRIDENT_STATS[r]["atk_max"],
+                proc_chance = IMP_TRIDENT_STATS[r]["proc_chance"],
+                proc_bonus  = IMP_TRIDENT_STATS[r]["proc_bonus"],
             )),
             ("Goblin Dagger", lambda r: Equipment(
                 name         = "Goblin Dagger",
                 slot         = "weapon",
                 rarity       = r,
-                atk_min      = main.GOBLIN_DAGGER_STATS[r]["atk_min"],
-                atk_max      = main.GOBLIN_DAGGER_STATS[r]["atk_max"],
-                blind_chance = main.GOBLIN_DAGGER_STATS[r]["blind_chance"],
+                atk_min      = GOBLIN_DAGGER_STATS[r]["atk_min"],
+                atk_max      = GOBLIN_DAGGER_STATS[r]["atk_max"],
+                blind_chance = GOBLIN_DAGGER_STATS[r]["blind_chance"],
             )),
             ("Goblin Shortbow", lambda r: Equipment(
                 name            = "Goblin Shortbow",
                 slot            = "weapon",
                 rarity          = r,
-                atk_min         = main.GOBLIN_SHORTBOW_STATS[r]["atk_min"],
-                atk_max         = main.GOBLIN_SHORTBOW_STATS[r]["atk_max"],
-                paralyze_chance = main.GOBLIN_SHORTBOW_STATS[r]["paralyze_chance"],
-                paralyze_turns  = main.GOBLIN_SHORTBOW_STATS[r]["paralyze_turns"],
+                atk_min         = GOBLIN_SHORTBOW_STATS[r]["atk_min"],
+                atk_max         = GOBLIN_SHORTBOW_STATS[r]["atk_max"],
+                paralyze_chance = GOBLIN_SHORTBOW_STATS[r]["paralyze_chance"],
+                paralyze_turns  = GOBLIN_SHORTBOW_STATS[r]["paralyze_turns"],
             )),
             ("Goblin War Blade", lambda r: Equipment(
                 name          = "Goblin War Blade",
                 slot          = "weapon",
                 rarity        = r,
-                atk_min       = main.GOBLIN_WAR_BLADE_STATS[r]["atk_min"],
-                atk_max       = main.GOBLIN_WAR_BLADE_STATS[r]["atk_max"],
-                bleed_turns   = main.GOBLIN_WAR_BLADE_STATS[r]["bleed_turns"],
-                bleed_dmg_min = main.GOBLIN_WAR_BLADE_STATS[r]["bleed_dmg_min"],
-                bleed_dmg_max = main.GOBLIN_WAR_BLADE_STATS[r]["bleed_dmg_max"],
+                atk_min       = GOBLIN_WAR_BLADE_STATS[r]["atk_min"],
+                atk_max       = GOBLIN_WAR_BLADE_STATS[r]["atk_max"],
+                bleed_turns   = GOBLIN_WAR_BLADE_STATS[r]["bleed_turns"],
+                bleed_dmg_min = GOBLIN_WAR_BLADE_STATS[r]["bleed_dmg_min"],
+                bleed_dmg_max = GOBLIN_WAR_BLADE_STATS[r]["bleed_dmg_max"],
             )),
             # Javelina Tusk REMOVED — now a crafting component.
         ],
@@ -455,11 +477,7 @@ def _build_factories():
             for (name, defence, max_hp, atk_min, atk_max, max_ap_bonus, max_rage_bonus, _price)
             in MERCHANT_RINGS
         ],
-        "trinket": [
-            (name, _make_fixed_trinket_factory(name, max_rage_bonus, consume_on_use))
-            for (name, max_rage_bonus, consume_on_use, _price)
-            in MERCHANT_TRINKETS
-        ],
+        "trinket": [],  # Berserk trinket handled via _roll_berserk_trinket() in generate_merchant_stock
     }
 
 
@@ -480,11 +498,19 @@ def _roll_weapon_variants():
         list of rarity strings, in display order: ["normal", ...] possibly
         plus "uncommon" and/or "rare". Always at least one entry.
     """
+    import sys
+    _main = sys.modules.get("__main__")
+    _diff = getattr(_main, "DIFFICULTY", "warrior") if _main else "warrior"
+
     variants = ["normal"]
     if random.random() < MERCHANT_VARIANT_CHANCE["uncommon"]:
         variants.append("uncommon")
-    if random.random() < MERCHANT_VARIANT_CHANCE["rare"]:
+    # Noob: no rare variants — uncommon is the ceiling at the merchant  — v0.7.11
+    if _diff != "noob" and random.random() < MERCHANT_VARIANT_CHANCE["rare"]:
         variants.append("rare")
+    # Champion: also roll for epic variants (20% chance)
+    if _diff == "champion" and random.random() < 0.20:
+        variants.append("epic")
     return variants
 
 
@@ -545,7 +571,6 @@ def generate_merchant_stock():
     shield_prices  = {s[0]: s[3] for s in MERCHANT_SHIELDS}
     shield_weights = {s[0]: s[4] for s in MERCHANT_SHIELDS}
     ring_prices    = {r[0]: r[7] for r in MERCHANT_RINGS}
-    trinket_prices = {t[0]: t[3] for t in MERCHANT_TRINKETS}
 
     # ── WEAPONS — 3 types, each with variant rolls ──
     weapon_groups = []
@@ -612,14 +637,23 @@ def generate_merchant_stock():
             "sold":  False,
         })
 
-    # ── TRINKETS — both available each visit (only 2 in the pool currently) ──
+    # ── TRINKETS — Trinket of Berserk uses weighted rarity roll (50% appear chance) ──
     trinkets = []
-    trinket_pool   = factories["trinket"]
-    trinket_picks  = random.sample(trinket_pool, k=min(2, len(trinket_pool)))
-    for name, factory in trinket_picks:
+    berserk_roll = _roll_berserk_trinket()
+    if berserk_roll is not None:
+        rarity, berserk_turns, price = berserk_roll
+        from shared import Equipment
+        trinket_item = Equipment(
+            name           = "Trinket of Berserk",
+            slot           = "trinket",
+            rarity         = rarity,
+            consume_on_use = True,
+            berserk_turns  = berserk_turns,
+            flavour        = f"A shard of compressed rage. Crush it to enter berserk mode for {berserk_turns} turn{'s' if berserk_turns > 1 else ''}.",
+        )
         trinkets.append({
-            "item":  factory(None),
-            "price": trinket_prices.get(name, 25),
+            "item":  trinket_item,
+            "price": price,
             "sold":  False,
         })
 
@@ -957,7 +991,8 @@ def _buy_variant(warrior, variant_dict):
         return
 
     # Spend gold (NOT total_gold_earned — gold.py convention).
-    warrior.gold -= price
+    from gold import spend_gold as _spend_gold
+    _spend_gold(warrior, price)  # v0.7.18: tracks total_gold_spent
     warrior.inventory.append(item)
     variant_dict["sold"] = True
 
@@ -968,12 +1003,8 @@ def _buy_variant(warrior, variant_dict):
     if hasattr(item, "slot") and item.slot:
         equip_choice = input(_wrap(f"  Equip the {getattr(item, 'name', 'item')} now? (y/n): ")).strip().lower()
         if equip_choice == "y":
-            main_mod = _find_main_module()
-            if main_mod and hasattr(main_mod, "equip_item"):
-                main_mod.equip_item(warrior, item)
-            else:
-                # Fallback: leave it in inventory if we can't find the helper
-                print(_wrap("  'Set it aside for now — you can equip it later.'"))
+            from equipment import equip_item
+            equip_item(warrior, item)
         else:
             print(_wrap("  'Suit yourself. It'll be there when you want it.'"))
     else:
@@ -996,7 +1027,8 @@ def _buy_potion(warrior, stock, potion_key):
         input("\n  Press Enter...")
         return
 
-    warrior.gold -= data["price"]
+    from gold import spend_gold as _spend_gold
+    _spend_gold(warrior, data["price"])  # v0.7.18: tracks total_gold_spent
     warrior.potions[potion_key] = warrior.potions.get(potion_key, 0) + 1
     data["stock"] -= 1
 

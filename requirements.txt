@@ -1,0 +1,16 @@
+# Core
+colorama
+pygame
+
+# Leaderboard (Supabase)
+supabase
+python-dotenv
+
+# Profanity filter
+better-profanity
+
+# Terminal output polish (tables, panels, progress bars)
+rich
+
+# Linter (dev-only, not needed to run the game, just to develop it)
+ruff

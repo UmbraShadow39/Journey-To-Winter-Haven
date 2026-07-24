@@ -87,7 +87,7 @@ __all__ = [
     # Constants
     "MONSTER_TYPES", "TIER4_BOSSES", "LEVEL_TITLES",
     "CHIMERA_TIER1_POOL", "CHIMERA_TIER2_POOL", "CHIMERA_TIER3_POOL",
-    "CHIMERA_ELEMENTS", "HEAL_PERCENTS_ENEMY",
+    "CHIMERA_ELEMENTS", "HEAL_PERCENTS_ENEMY", "CHIMERA_PASSIVE_HEAL_PCT",
 
     # Underscored helpers main calls back into. `import *` skips
     # underscored names by default — listing them here forces export.
@@ -611,11 +611,15 @@ def blinding_charge(self, hero):
         print(wrap("👁️‍🗨️ You're already blinded — the charge just hits HARD!"))
     else:
         if is_chimera:
-            # 2 full missed turns
-            hero.blind_turns = 2
+            # v0.7.16: was 2 full missed turns — reduced to 1 hard skip,
+            # then a weakened (half-damage) follow-up turn instead of a
+            # second full lockout. See paralyzing_shot's dispatcher call
+            # for the matching change and the reasoning.
+            hero.blind_turns = 1
             hero.blind_long  = True
-            apply_turn_stop(hero, turns=2, reason="Blinded")
-            print("😵 You are BLINDED! You will miss your next 2 turns!")
+            apply_turn_stop(hero, turns=1, reason="Blinded")
+            hero.chimera_weakened_turns = 1
+            print("😵 You are BLINDED! You will miss your next turn!")
         else:
             hero.blind_turns = 1
             hero.blind_long = False
@@ -698,9 +702,21 @@ def fallen_warp_should_trigger(enemy, warrior):
     last_tier   = getattr(enemy, "warp_last_tier", tier)
 
     if on_cooldown:
-        if tier >= last_tier:
-            return False  # respect the cooldown
+        # v0.7.18: comparison was inverted — tier NUMBERS rise as HP falls
+        # (0 = healthy ... 3 = desperate), so "dropped to a worse tier"
+        # means tier > last_tier. The old check overrode on tier < last_tier,
+        # which requires the Fallen's HP to GO UP mid-cooldown — impossible,
+        # he has no self-heal — so the override could never fire.
+        if tier <= last_tier:
+            # v0.7.18: breather turn — consume the cooldown HERE and skip.
+            # It used to be cleared at the start of every enemy turn in
+            # combat.py, BEFORE this check ran — which made this whole
+            # cooldown branch dead code and allowed back-to-back warps
+            # (56% of desperation-tier turns chained a second warp).
+            enemy.warp_on_cooldown = False
+            return False
         # Dropped to a worse tier mid-cooldown — desperation kicks in
+        enemy.warp_on_cooldown = False
         print(wrap("💀 The Fallen Warrior's desperation overrides his fatigue!"))
 
     return random.random() < chance
@@ -765,6 +781,7 @@ def fallen_defence_warp(enemy, warrior):
         print(wrap("🌀 The warped curse tightens again — your armour cannot stabilise yet."))
     else:
         warrior.defence_warp_original_defence = warrior.defence
+        warrior.defence_warp_snapshot = warrior.defence  # track defence at warp start for delta restore
         warrior.defence_warp_phase = 0
 
     print(wrap(
@@ -1050,14 +1067,25 @@ def _apply_psychic_debuff_to_stats(warrior):
     max_atk_loss = max(1, max_atk_loss)
     # DEF loss can be 0 if DEF is already 0 — no guarantee needed there
 
-    warrior.min_atk = max(1, warrior.psychic_base_min_atk - min_atk_loss)
-    warrior.max_atk = max(warrior.min_atk, warrior.psychic_base_max_atk - max_atk_loss)
+    new_min_atk = max(1, warrior.psychic_base_min_atk - min_atk_loss)
+    new_max_atk = max(new_min_atk, warrior.psychic_base_max_atk - max_atk_loss)
 
     # DEF of 0: no calculation needed, stays 0. No floor of 1 — DEF CAN be 0.
     if warrior.psychic_base_defence == 0:
-        warrior.defence = 0
+        new_defence = 0
     else:
-        warrior.defence = max(0, warrior.psychic_base_defence - def_loss)
+        new_defence = max(0, warrior.psychic_base_defence - def_loss)
+
+    # Track the actual applied penalty so _clear_psychic_debuff can add it
+    # back rather than hard-restoring the snapshot. This preserves any stat
+    # gains (e.g. level-up) that happen while the debuff is active.
+    warrior.psychic_applied_min_atk_loss = warrior.min_atk - new_min_atk
+    warrior.psychic_applied_max_atk_loss = warrior.max_atk - new_max_atk
+    warrior.psychic_applied_def_loss     = warrior.defence - new_defence
+
+    warrior.min_atk = new_min_atk
+    warrior.max_atk = new_max_atk
+    warrior.defence = new_defence
 
 def _clear_psychic_debuff(warrior):
     """
@@ -1073,10 +1101,17 @@ def _clear_psychic_debuff(warrior):
     is_monster = hasattr(warrior, "display_name") and not hasattr(warrior, "inventory")
 
     if hasattr(warrior, "psychic_base_min_atk"):
-        warrior.min_atk = warrior.psychic_base_min_atk
-        warrior.max_atk = warrior.psychic_base_max_atk
-        warrior.defence = warrior.psychic_base_defence
-        if not is_monster:
+        if is_monster:
+            # Monsters: hard-restore is safe — they cannot gain stats mid-fight
+            warrior.min_atk = warrior.psychic_base_min_atk
+            warrior.max_atk = warrior.psychic_base_max_atk
+            warrior.defence = warrior.psychic_base_defence
+        else:
+            # Player: add back the applied penalty so mid-fight stat gains
+            # (e.g. level-up) are preserved rather than overwritten.
+            warrior.min_atk += getattr(warrior, "psychic_applied_min_atk_loss", 0)
+            warrior.max_atk += getattr(warrior, "psychic_applied_max_atk_loss", 0)
+            warrior.defence += getattr(warrior, "psychic_applied_def_loss", 0)
             del warrior.psychic_base_min_atk
             del warrior.psychic_base_max_atk
             del warrior.psychic_base_defence
@@ -1086,6 +1121,10 @@ def _clear_psychic_debuff(warrior):
     warrior.psychic_debuff_turns = 0
     warrior.psychic_debuff_skip  = False
     warrior.psychic_exposed      = False
+    # Clear applied-penalty trackers
+    warrior.psychic_applied_min_atk_loss = 0
+    warrior.psychic_applied_max_atk_loss = 0
+    warrior.psychic_applied_def_loss     = 0
 
 def trigger_pressure_feedback(hero, enemy):
     """
@@ -1512,7 +1551,7 @@ class Wolf_Pup_Rider(Monster):
                          gold=0,
                          xp=28,
                          essence=["wolf pup rider essence"],
-                         defence=5,
+                         defence=4,  # v0.7.20: 5 → 4 (Hardened+Champion was hitting 7, too close to Fallen boss)
                          ap = 4
                          )
         self.loot_drop = "wolf_pup_pelt"
@@ -1875,8 +1914,17 @@ def chimera_special_dispatcher(enemy, warrior):
         print(wrap(f"⚠️ The Young Chimera channels its power! (+1 turn duration)"))
 
     # Dispatch
+    # v0.7.16: Chimera's turn-skippers reduced from 2 hard-locked turns to 1.
+    # The "Arena intervenes" consecutive-skip guard is disabled for this
+    # fight specifically (see resolve_player_turn_stop's chimera exception),
+    # so two full skips back-to-back with no counterplay was a real death
+    # trap — poison ticking + a Chimera heal landing free on both lost
+    # turns, with zero player agency. In place of the second hard skip,
+    # chimera_weakened_turns grants ONE turn where the player can still
+    # act, just at half damage (see chimera_weakened_multiplier in combat.py).
     if chosen is paralyzing_shot:
-        result = paralyzing_shot(enemy, warrior, paralyze_turns=2)
+        result = paralyzing_shot(enemy, warrior, paralyze_turns=1)
+        warrior.chimera_weakened_turns = 1
     else:
         result = chosen(enemy, warrior)
 
@@ -1919,9 +1967,9 @@ class Young_Chimera(Monster):
         self.special_move = chimera_special_dispatcher
 
         # Per-tier charge counts — dispatcher decrements before calling move
-        self.charges_tier1 = 5   # light moves — more uses
-        self.charges_tier2 = 4   # mid moves
-        self.charges_tier3 = 3   # heavy moves — fewer uses
+        self.charges_tier1 = 6   # light moves — was 5
+        self.charges_tier2 = 5   # mid moves — was 4
+        self.charges_tier3 = 4   # heavy moves — was 3
         # Primordial Surge is fury-only — no dispatcher charges needed
 
         # Fury Charge — builds when player uses ranked skills (rank * 10 per use)
@@ -1962,7 +2010,10 @@ HEAL_PERCENTS_ENEMY = {
     2: 0.20,
     3: 0.30,
     4: 0.40,
+    5: 0.50,   # Patronus R5 First Aid — 50% max HP heal
 }
+
+CHIMERA_PASSIVE_HEAL_PCT = 0.15   # Chimera champion variant passive heal (was 0.10)
 
 def patronus_double_strike(enemy, warrior):
     """
@@ -2070,7 +2121,7 @@ def patronus_power_charge(enemy, warrior):
 
 def patronus_first_aid(enemy):
     """
-    Patronus First Aid — 1 charge, locked at Rank 4 (40% max HP heal).
+    Patronus First Aid — 1 charge, Rank 5 (50% max HP heal).  — v0.7.11
     Only fires when missing HP. No AP cost — charge based.
     """
     if getattr(enemy, "charges_first_aid", 0) <= 0:
@@ -2096,7 +2147,7 @@ def patronus_first_aid(enemy):
 
 def patronus_defence_break(enemy, warrior):
     """
-    Patronus Defence Break — 3 charges, locked at Rank 4 (max DEF strip).
+    Patronus Defence Break — 3 charges, Rank 5 (max DEF strip).  — v0.7.11
     Reduces warrior DEF by percentage for 2-3 turns. No AP cost — charge based.
     Fires early — priority opener to strip player DEF before Double Strike lands.
     """
@@ -2149,7 +2200,7 @@ def _tick_patronus_def_break(warrior):
 def _tick_patronus_passive_first_aid(enemy):
     """
     v0.6.15: Patronus passive First Aid trigger.
-    When his HP first drops below 50%, his First Aid Rank 4 (40% max HP heal)
+    When his HP first drops below 50%, his First Aid Rank 5 (50% max HP heal)  — v0.7.11
     fires automatically at the start of his turn — no AP cost, doesn't consume
     his regular AI action. Behaves like a player drinking a potion as a bonus
     action. Still respects the existing charges_first_aid count (default 1)
@@ -2280,7 +2331,7 @@ class Patronus(Monster):
     def __init__(self):
         super().__init__(
             name    = "Patronus",
-            hp      = 129 + Patronus.SHIELD_HP_BONUS,  # 135 effective
+            hp      = 156 + Patronus.SHIELD_HP_BONUS,  # 162 effective
             min_atk = 7,
             max_atk = 12,
             gold    = 0,
@@ -2293,16 +2344,25 @@ class Patronus(Monster):
 
         self.max_ap = 7  # matches design spec — AP regen cap
 
-        # Skill charges — finite uses per fight
-        self.charges_double_strike  = 3
-        self.charges_war_cry        = 2
-        self.charges_power_charge   = 2
-        self.charges_first_aid      = 1
-        self.charges_defence_break  = 3
+        # Skill charges — scale by difficulty
+        # noob: fewer charges, warrior: standard, champion: full
+        import sys as _sys
+        _cm = _sys.modules.get("__main__")
+        _d  = getattr(_cm, "DIFFICULTY", "warrior") if _cm else "warrior"
+        self.charges_double_strike  = {"noob": 2, "warrior": 3, "champion": 4}.get(_d, 3)
+        self.charges_war_cry        = {"noob": 1, "warrior": 2, "champion": 3}.get(_d, 2)
+        self.charges_power_charge   = {"noob": 1, "warrior": 2, "champion": 3}.get(_d, 2)
+        self.charges_first_aid      = 1   # unchanged — heal once regardless of difficulty
+        self.charges_defence_break  = {"noob": 2, "warrior": 3, "champion": 4}.get(_d, 3)
 
-        # First Aid and Defence Break — locked at Rank 4 (max tier)
-        self.patronus_heal_rank = 4
-        self.patronus_db_rank   = 4
+        # Skill ranks scale by difficulty — noob R3, warrior R4, champion R5
+        import sys
+        _main = sys.modules.get("__main__")
+        _diff = getattr(_main, "DIFFICULTY", "warrior") if _main else "warrior"
+        _skill_rank = {"noob": 3, "warrior": 4, "champion": 5}.get(_diff, 4)
+        self.patronus_heal_rank = _skill_rank
+        self.patronus_db_rank   = _skill_rank
+        self.patronus_skill_rank = _skill_rank  # for any future skill rank checks
 
         # War Cry tracking
         self.war_cry_bonus = 0
@@ -2505,10 +2565,10 @@ def random_tier4_boss():
         if r <= cumulative:
             boss = cls()
             boss.tier = 4  # ✅
-            return boss
+            return apply_difficulty_scaling(boss)
     boss = TIER4_BOSSES[-1][0]()  # fallback
     boss.tier = 4                 # ✅
-    return boss
+    return apply_difficulty_scaling(boss)
 
 # ---------- Weighted tier selection ----------
 def pick_tier_from_weights(weight_map):
@@ -2537,12 +2597,37 @@ def get_round_tier(round_num):
     # Fallback
     return 3
 
+def apply_difficulty_scaling(monster):
+    """
+    Scale a regular monster's stats based on current difficulty.
+    Reads DIFFICULTY from the main module. Min 1 on all stats.
+    Does NOT apply to bosses (Chimera/Patronus handle their own scaling).
+    """
+    import sys
+    main = sys.modules.get("__main__")
+    if not main:
+        return monster
+    diff = getattr(main, "DIFFICULTY", "warrior")
+    mult_table = getattr(main, "DIFFICULTY_MONSTER_MULT", {})
+    mult = mult_table.get(diff, 1.0)
+    if mult == 1.0:
+        return monster  # warrior mode — no change
+
+    monster.hp      = max(1, round(monster.hp      * mult))
+    monster.max_hp  = monster.hp
+    monster.min_atk = max(1, round(monster.min_atk * mult))
+    monster.max_atk = max(monster.min_atk, round(monster.max_atk * mult))
+    monster.defence = max(1, round(monster.defence * mult)) if monster.defence > 0 else 0
+    return monster
+
+
 def select_arena_enemy(round_num):
     tier = get_round_tier(round_num)
     if tier == 4:
         return random_tier4_boss()
     else:
-        return random_encounter_by_tier(tier, round_num)
+        enemy = random_encounter_by_tier(tier, round_num)
+        return apply_difficulty_scaling(enemy)
 
 # ---------- Debug: fully random by weight ----------
 def random_encounter():

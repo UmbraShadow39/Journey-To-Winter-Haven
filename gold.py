@@ -57,6 +57,36 @@ def award_gold(warrior, amount):
     warrior.total_gold_earned = getattr(warrior, "total_gold_earned", 0) + amount
 
 
+def spend_gold(warrior, amount):
+    """
+    v0.7.18: Deduct gold AND track lifetime spending for the Big Spender /
+    Penny Pincher titles (see titles.py). Mirrors award_gold.
+
+    `total_gold_spent` counts only ACTUAL purchases routed through here —
+    merchant buys, crafter component/recipe/cure/socket costs. Selling
+    items back is NOT tracked (it goes through award_gold on the credit
+    side), so a player who buys then refunds still shows nonzero spend and
+    correctly loses the Penny Pincher title. Nathan's rule: Penny Pincher
+    keys off total_gold_spent == 0, Big Spender off ending gold == 0
+    regardless of how they got there.
+
+    Negative/zero amounts are ignored. Returns True if the deduction was
+    applied (caller has usually already gold-checked, but this stays safe).
+    """
+    if amount <= 0:
+        return False
+    warrior.gold = getattr(warrior, "gold", 0) - amount
+    warrior.total_gold_spent = getattr(warrior, "total_gold_spent", 0) + amount
+    # v0.7.20 (Nathan's call): latch Big Spender the moment gold hits exactly 0,
+    # so it can't be voided by gold earned later in the run (e.g. the Patronus
+    # ending's +100). Gold only ever leaves via this function, so reaching 0
+    # here always means the player deliberately spent their last coin. Awarded
+    # at run-end scoring if this latch is set OR ending gold is 0 — see score.py.
+    if warrior.gold == 0:
+        warrior._big_spender_earned = True
+    return True
+
+
 # ------------------------------------------------------------------ #
 #  GOLD CALCULATION                                                    #
 # ------------------------------------------------------------------ #
@@ -141,6 +171,15 @@ def calculate_gold_reward(enemy, turn_count, warrior):
 
     if raw_total < base_gold:
         breakdown.append(f"(Minimum payout enforced — floor is {base_gold} gold)")
+
+    # Difficulty gold multiplier  — v0.7.11
+    import sys
+    _main = sys.modules.get("__main__")
+    _diff = getattr(_main, "DIFFICULTY", "warrior") if _main else "warrior"
+    _gold_mult_table = getattr(_main, "DIFFICULTY_GOLD_MULT", {"noob": 0.75, "warrior": 1.0, "champion": 1.50})
+    _gold_mult = _gold_mult_table.get(_diff, 1.0)
+    if _gold_mult != 1.0:
+        total = max(1, round(total * _gold_mult))
 
     return {
         "base":              base_gold,

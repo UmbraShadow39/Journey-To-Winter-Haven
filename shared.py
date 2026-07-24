@@ -85,14 +85,37 @@ def wrap(text, width=WIDTH):
     )
 
 
+# v0.7.18: hook injected by the main file (see its injection block) so dev
+# shortcuts (!debug, !c, !q) work at "Press Enter to continue..." prompts,
+# matching check(). Stays None if main hasn't wired it — then continue_text
+# behaves exactly like the old bare input().
+_dev_shortcut_hook = None
+
 def continue_text():
-    input("\nPress Enter to continue...\n")
+    while True:
+        raw = input("\nPress Enter to continue...\n")
+        # Only '!'-prefixed text is shortcut territory — anything else
+        # advances the story exactly as before.
+        if (_dev_shortcut_hook is not None
+                and isinstance(raw, str)
+                and raw.strip().startswith("!")):
+            if _dev_shortcut_hook(raw):
+                continue  # handled (e.g. !debug ran) — re-show this prompt
+        return
 
 
 def show_health(hero):
-    from shared import hp_bar  # hp_bar defined below in this file
-    bar = hp_bar(hero.hp, hero.max_hp)
-    print(f"❤️ HP [{bar}] {hero.hp}/{hero.max_hp}")
+    # v0.7.18: was rendering the old ANSI hp_bar() below — every monster
+    # special-move function in monsters.py calls show_health(), so that old
+    # bar was showing up far more often than the new rich-based hp_line()
+    # from ui_bars.py. Route through the same renderer everywhere instead.
+    from ui_bars import hp_line
+    # Same enemy-vs-hero detection already used in monsters.py: monsters have
+    # display_name, heroes have inventory.
+    is_enemy = hasattr(hero, "display_name") and not hasattr(hero, "inventory")
+    label = hero.display_name.title() if is_enemy else hero.name
+    side = "enemy" if is_enemy else "hero"
+    print(hp_line(label, hero.hp, hero.max_hp, side=side))
 
 
 # ============================================================
@@ -292,7 +315,7 @@ def apply_turn_stop(hero, turns=1, reason="Stunned"):
         hero.paralyzed = True
 
 
-def try_death_defier(hero, reason=""):
+def try_death_defier(hero, reason="", enemy=None):
     if hero.hp > 0:
         return False
     if hero.death_defier and hero.death_defier_active and not hero.death_defier_used:
@@ -374,6 +397,14 @@ class Equipment:
         enemy_def_drain=1,
         two_handed=False,
         sockets=None,
+        flavour="",
+        atk_bonus=0,
+        max_rage_bonus=0,
+        consume_on_use=False,
+        berserk_turns=0,
+        rot_chance=0.0,
+        rot_stacks=0,
+        rot_hp_per_stack=0,
     ):
         self.name             = name
         self.slot             = slot
@@ -424,6 +455,14 @@ class Equipment:
             self.sockets = self._compute_initial_sockets()
         else:
             self.sockets = sockets
+        self.flavour           = flavour
+        self.atk_bonus         = atk_bonus
+        self.max_rage_bonus    = max_rage_bonus
+        self.consume_on_use    = consume_on_use
+        self.berserk_turns     = berserk_turns
+        self.rot_chance        = rot_chance
+        self.rot_stacks        = rot_stacks
+        self.rot_hp_per_stack  = rot_hp_per_stack
 
     # ---------- Socket system helpers (v0.6.16) ----------
 
@@ -440,13 +479,17 @@ class Equipment:
         "mythril":   2,   # placeholder
     }
     _SOCKET_COUNTS_ARMOR = {
-        # No "poor" entry — Poor armor doesn't exist in v0.6.16
+        # v0.7.18: Nathan's call — only Poor carries no sockets now. Normal
+        # bumped up to match Uncommon (1 each) rather than sitting at 0;
+        # scaling up faster at the top end than weapons do (mythril armor
+        # hits 4 vs weapons' flat 2).
+        "poor":      0,
         "normal":    1,
         "uncommon":  1,
         "rare":      2,
         "epic":      2,
-        "legendary": 2,
-        "mythril":   2,
+        "legendary": 3,
+        "mythril":   4,
     }
     _SOCKETABLE_SLOTS = {"weapon", "armor"}
 

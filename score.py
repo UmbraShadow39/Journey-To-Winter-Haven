@@ -39,20 +39,33 @@ TITLE_SCORE_VALUES = {
     "chinker":                 50,
     "death_delver":            50,
 
+    # Between Tier 1 and 2 — low SP cost, but the challenge is discovering
+    # the mechanic (equip two 1H weapons) rather than earning the SP
+    "dual_wielder":            75,   # v0.7.13: was 150, moved down — discovery-based, not effort-based
+
     # Tier 2 — mid-game milestone
     "champion_of_the_arena":  150,
-    "dual_wielder":           150,   # v0.6.18: equipped two 1H weapons simultaneously
 
     # Tier 3 — skill mastery, RNG-gated survival, or breadth capstone
     "river_warrior":          250,   # ~30% survival roll AND survive prologue rocks
-    "brawl_master":           250,   # Power Strike rank 5
-    "combat_medic":           250,   # First Aid rank 5
-    "charismatic_speaker":    250,   # War Cry rank 5
-    "armor_piercer":          250,   # Defence Break rank 5
-    "death_apprentice":       250,   # Death Defier rank 5
+    # v0.7.18: single-skill masteries bumped 250 -> 350. Mastering one skill
+    # is 11 SP and a full-run opportunity cost (that's 11 SP NOT spent
+    # elsewhere) — it should outscore the breadth/crafting 250s below.
+    # (Rank-10 "true mastery" is planned for the full game — separate title.)
+    "brawl_master":           350,   # Power Strike rank 5
+    "combat_medic":           350,   # First Aid rank 5
+    "charismatic_speaker":    350,   # War Cry rank 5
+    "armor_piercer":          350,   # Defence Break rank 5
+    "death_apprentice":       350,   # Death Defier rank 5
+    "assassin":               350,   # Dual Wielder rank 5 — Session 19
     "true_jack_of_all_trades": 250,  # Rank 2+ in every skill — breadth capstone
     "wolf_hide_crafter":      250,   # v0.6.18: craft all 4 Wolf-Hide pieces in a run
     "dire_wolf_crafter":      250,   # v0.6.18: craft all 4 Dire Wolf pieces in a run
+
+    # v0.7.18: gold-behavior titles (mutually exclusive by definition —
+    # spending nothing means you never zero out your balance BY spending).
+    "big_spender":             50,   # end a run with exactly 0 gold (any path)
+    "penny_pincher":          350,   # spend 0 gold all run — severe self-handicap
 
     # Tier 4 — true ending titles (final boss kill)
     "guardian":               500,   # Beat Young Chimera
@@ -97,15 +110,15 @@ DEFIER_BONUS_FLAT     = 50
 #   - the new run-wide quick-kill multiplier (+0.10 per qualifying kill)
 # Bosses (Patronus, Chimera) count toward the multiplier but skip the
 # per-fight bonus — the outcome multiplier already rewards the boss kill
-# on its own (2.0×/2.1×), so adding a per-fight spike on top would dwarf
+# on its own (2.5×/2.6×), so adding a per-fight spike on top would dwarf
 # every other fight.
-QUICK_KILL_TURNS = {
+QUICK_KILL_TURNS = {   # Warrior baseline — Champion adds bonus turns via QUICK_KILL_CHAMPION_BONUS
     1:          2,   # T1: Slimes, Goblin, Imp, Skeleton, Wolf Pup
     2:          3,   # T2: Red Slime, Ghost, Javelina, Archer, Dire Wolf Pup
     3:          4,   # T3: Wolf Pup Rider, Hydra, Flayed, Drowned, War Blade
-    "fallen":   5,   # Fallen Warrior — round-5 arena boss
-    "patronus": 6,   # Patronus — tankier than Chimera (40% heal mechanic)
-    "chimera":  5,   # Young Chimera — damage-race boss
+    "fallen":   5,   # Fallen Warrior — round-5 arena boss       (Champion: 7)
+    "patronus": 6,   # Patronus — tankier than Chimera (40% heal) (Champion: 10)
+    "chimera":  5,   # Young Chimera — damage-race boss           (Champion: 8)
 }
 
 QUICK_KILL_MULTIPLIER_PER_KILL = 0.10   # +0.10 to outcome multiplier per qualifying kill
@@ -114,11 +127,33 @@ QUICK_KILL_MULTIPLIER_PER_KILL = 0.10   # +0.10 to outcome multiplier per qualif
 # contribute to the run-wide multiplier instead).
 SUPPRESS_PER_FIGHT_BONUS_FOR = {"patronus", "chimera"}
 
+# Champion difficulty quick-kill turn bonuses — added on top of QUICK_KILL_TURNS.
+# Regular enemies get +1 turn (they're tankier), Fallen +2, Chimera +3, Patronus +4.
+# Boss bonuses reflect the heal mechanic / higher HP pools on Champion.
+QUICK_KILL_CHAMPION_BONUS = {
+    "fallen":   2,
+    "patronus": 4,
+    "chimera":  3,
+    # all other keys default to +1 via the fallback in _quick_kill_threshold
+}
+
 
 def _quick_kill_threshold(enemy):
-    """Return the turn-count threshold for this enemy, or None if none defined."""
+    """Return the turn-count threshold for this enemy, or None if none defined.
+    On Champion difficulty, thresholds are increased to account for tankier enemies:
+    +1 turn for regular enemies, +2 Fallen, +3 Chimera, +4 Patronus."""
+    import sys
+    _main = sys.modules.get("__main__")
+    _diff = getattr(_main, "DIFFICULTY", "warrior") if _main else "warrior"
+
     config_key = _gold_config_key(enemy)
-    return QUICK_KILL_TURNS.get(config_key)
+    base = QUICK_KILL_TURNS.get(config_key)
+    if base is None:
+        return None
+    if _diff == "champion":
+        bonus = QUICK_KILL_CHAMPION_BONUS.get(config_key, 1)  # default +1 for regular enemies
+        return base + bonus
+    return base
 
 # Run-wide weights
 DAMAGE_DEALT_WEIGHT     = 0.50
@@ -137,33 +172,54 @@ POTION_VALUE                = 5     # per potion remaining
 POTION_BONUS_CAP            = 100   # max contribution from regular potions
 FROSTPINE_TONIC_SAVED_VALUE = 25    # separate, not in cap
 
-# Outcome multipliers
+# Outcome multipliers — per difficulty  — v0.7.11
+# Noob: lower boss multipliers, Champion: higher, Warrior: baseline
+# Champion boss victories skip the blanket 1.5x (applied to non-boss outcomes only)
 OUTCOME_MULTIPLIERS = {
-    "chimera_victory":   2.1,    # good path — extra 0.1 compensates for no gold
-    "patronus_victory":  2.0,    # evil path
-    "intervention":      1.5,    # survived 4+ cycles, didn't land kill
-    "defeat":            1.0,
-    "gooed":             1.0,
-    # Fate deaths — runs that ended in the prologue or fled the arena.
-    # All currently bypass the normal end-of-run flow but now flow through
-    # the leaderboard system so the run is at least scored.
-    "flayed_one":        0.5,    # river rocks (refused help in prologue)
-    "drowned_one":       0.5,    # waterfall (prologue)
-    "coward":            0.3,    # ran from arena, shaman executed you
+    "noob": {
+        "chimera_victory":  1.75,
+        "patronus_victory": 1.75,
+        "intervention":     1.25,
+        "defeat":           1.0,
+        "gooed":            1.0,
+        "flayed_one":       0.5,
+        "drowned_one":      0.5,
+        "coward":           0.3,
+    },
+    "warrior": {
+        "chimera_victory":  2.1,
+        "patronus_victory": 2.0,
+        "intervention":     1.5,
+        "defeat":           1.0,
+        "gooed":            1.0,
+        "flayed_one":       0.5,
+        "drowned_one":      0.5,
+        "coward":           0.3,
+    },
+    "champion": {
+        "chimera_victory":  2.6,
+        "patronus_victory": 2.5,
+        "intervention":     1.5,
+        "defeat":           1.0,
+        "gooed":            1.0,
+        "flayed_one":       0.5,
+        "drowned_one":      0.5,
+        "coward":           0.3,
+    },
 }
 
 # Post-multiplier flat bonus
 GOOED_PITY_BONUS = 1   # the eternal joke
 
 # Rank thresholds (final score after all multipliers)
-# v0.6.14: Added S+ ("Demigod Champion") at 6,500. S+ should be achievable
-# only on a strong run that triggers most of the bonus systems (berserk +
-# defier across many fights, low-HP close-match survival, full gold, saved
-# potions, lucky jackpot / bookie wins). Roughly 70% of theoretical max
-# (~9,600 on a perfect Chimera path). Future ladder sketched but not
-# implemented yet: SS "god champion", SS+ "Elder god champion",
-# SSS "God Champion" (uppercase G — the Holy Trinity tier), SSS+ TBD.
+# v0.6.14: Added S+ ("Demigod Champion") at 6,500.
+# v0.7.11: Added SS ("God Champion") at 9,000 — only realistically reachable on
+# Champion mode with a boss kill + strong quick-kill chain. New theoretical max
+# on a perfect Champion Chimera run is ~13,000+ (subtotal x 3.2 ceiling).
+# S+ (~6,500) remains achievable on Warrior with a near-perfect run.
+# SS requires Champion difficulty and tight play to hit consistently.
 RANK_THRESHOLDS = [
+    ("SS", 9500),
     ("S+", 6500),
     ("S",  4500),
     ("A",  3000),
@@ -174,6 +230,7 @@ RANK_THRESHOLDS = [
 ]
 
 RANK_DESCRIPTIONS = {
+    "SS": "God Champion. The Beast Gods bow their heads.",
     "S+": "Demigod Champion. The Beast Gods themselves take notice.",
     "S":  "Legendary champion. The arena will remember.",
     "A":  "Heroic. A tale worth telling.",
@@ -455,6 +512,32 @@ def show_run_score(warrior, outcome="defeat"):
 
     name = getattr(warrior, "name", "Warrior")
 
+    # ---- v0.7.18: unlock "Learn Basic Python" on a victory ----
+    # A win on any difficulty opens the mode; wins on distinct difficulties
+    # unlock further lessons. Recorded here so every victory path funnels
+    # through one hook. Wrapped so a progress-file hiccup never breaks the
+    # score screen.
+    if outcome in ("chimera_victory", "patronus_victory"):
+        try:
+            import python_lessons as _pylessons
+            _pylessons.record_run_completed(getattr(warrior, "difficulty", "warrior"))
+        except Exception:
+            pass
+
+    # ---- v0.7.18 / v0.7.20: gold-behavior titles ----
+    # Big Spender: hit exactly 0 gold at any point — latched in spend_gold the
+    #   moment it happens (Nathan's v0.7.20 call) so gold earned later in the
+    #   run (e.g. the Patronus ending's +100) can't void it. Still also awards
+    #   if the run simply ends at 0.
+    # Penny Pincher: never spent a single coin all run (total_gold_spent 0).
+    # Mutually exclusive by definition.
+    _titles = getattr(warrior, "titles", None)
+    if _titles is not None:
+        if getattr(warrior, "_big_spender_earned", False) or int(getattr(warrior, "gold", -1)) == 0:
+            _titles.add("big_spender")
+        if int(getattr(warrior, "total_gold_spent", 0)) == 0:
+            _titles.add("penny_pincher")
+
     # ---- Combat performance (capped) ----
     raw_dmg_dealt   = stats.get("total_dmg_dealt", 0)
     raw_dmg_blocked = stats.get("total_dmg_blocked", 0)
@@ -492,13 +575,14 @@ def show_run_score(warrior, outcome="defeat"):
         + jackpot_score + bookie_score
     )
 
-    base_multiplier = OUTCOME_MULTIPLIERS.get(outcome, 1.0)
+    import sys as _sys
+    _main = _sys.modules.get("__main__")
+    _diff = getattr(_main, "DIFFICULTY", "warrior") if _main else "warrior"
+
+    base_multiplier = OUTCOME_MULTIPLIERS.get(_diff, OUTCOME_MULTIPLIERS["warrior"]).get(outcome, 1.0)
 
     # v0.6.19: additive quick-kill multiplier bonus accumulated during the run.
     # Each qualifying quick kill added +0.10 to warrior.quick_kill_multiplier_bonus.
-    # Maximum theoretical with 4 regular rounds + Fallen + Chimera = 0.60 bonus,
-    # producing 2.7× ceiling on the good path (2.1 outcome + 0.6 quick kills)
-    # or 2.6× on the evil path (2.0 + 0.6).
     qk_bonus = float(getattr(warrior, "quick_kill_multiplier_bonus", 0.0) or 0.0)
     qk_count = int(getattr(warrior, "quick_kill_count", 0) or 0)
     multiplier = round(base_multiplier + qk_bonus, 2)
@@ -508,6 +592,15 @@ def show_run_score(warrior, outcome="defeat"):
     final_score = multiplied
     if outcome == "gooed":
         final_score += GOOED_PITY_BONUS
+
+    # Difficulty score multiplier
+    # Champion non-boss outcomes still get the flat 1.5x boost.
+    # Noob/Warrior non-boss outcomes use the table values as-is (no extra multiplier).
+    # Boss outcomes for all difficulties are fully handled by the per-difficulty table above.
+    import sys
+    _BOSS_OUTCOMES = {"chimera_victory", "patronus_victory"}
+    if _diff == "champion" and outcome not in _BOSS_OUTCOMES:
+        final_score = math.floor(final_score * 1.50)
 
     rank_letter, rank_desc = _rank_for_score(final_score)
 
@@ -594,6 +687,16 @@ def show_run_score(warrior, outcome="defeat"):
         _row(f"+ {GOOED_PITY_BONUS} (Goo Guy pity bonus)",  final_score, indent=2)
 
     print(f"  {'─' * (width - 4)}")
+    # Show difficulty flat multiplier if one was applied (champion non-boss only)
+    _BOSS_OUTCOMES = {"chimera_victory", "patronus_victory"}
+    if _diff == "champion" and outcome not in _BOSS_OUTCOMES:
+        _diff_mult = 1.50
+    else:
+        _diff_mult = 1.0
+    if _diff_mult != 1.0:
+        _diff_icons  = {"noob": "🛡️", "warrior": "⚔️", "champion": "👑"}
+        _diff_labels = {"noob": "Noob", "warrior": "Warrior", "champion": "Champion"}
+        _row(f"× {_diff_mult:.2f} ({_diff_labels.get(_diff, _diff)} difficulty)", "", indent=2)
     _row("FINAL SCORE", final_score, indent=2)
     print()
 
@@ -605,7 +708,10 @@ def show_run_score(warrior, outcome="defeat"):
     print("  ╚" + "═" * (rank_box_width - 2) + "╝")
     print(f"  {rank_desc}")
     print(bar)
-    input("\nPress Enter to continue...")
+    # v0.7.20: each end-of-run screen names itself so the three back-to-back
+    # prompts (score -> combat log -> leaderboard) don't read as one message
+    # repeating.
+    input("\nPress Enter to close the score screen...")
 
     return final_score
 

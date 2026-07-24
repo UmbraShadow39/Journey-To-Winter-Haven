@@ -64,6 +64,11 @@ TITLE_DISPLAY = {
     "wolf_hide_crafter":    "Wolf-Hide Crafter",
     "dire_wolf_crafter":    "Dire Wolf Crafter",
     "dual_wielder":         "Dual Wielder",
+    "assassin":             "Assassin",
+
+    # --- Gold-behavior titles (v0.7.18) ---
+    "big_spender":          "Big Spender",
+    "penny_pincher":        "Penny Pincher",
 }
 
 
@@ -71,12 +76,12 @@ TITLE_DISPLAY = {
 TITLE_BUFFS = {
     "guardian":             {"max_hp": 10, "defence": 4, "max_atk": 1, "min_atk": 1, "max_ap": 1},
     "dark_champion":        {"max_hp": 5, "defence": 1, "max_atk": 4, "min_atk": 4, "max_ap": 4},
-    "brawl_master":         {"max_atk": 2, "min_atk": 2},
+    "brawl_master":         {},  # v0.7.20: was +2 min/max ATK; now a 20% ATK multiplier applied in warrior_skill_base_roll — see combat.py
     "chinker":              {"max_atk": 1, "min_atk": 1},
     "death_delver":         {"max_hp": 5},
     "true_jack_of_all_trades": {
         "max_hp": 5, "max_atk": 1, "min_atk": 1,
-        "defence": 2, "max_ap": 1,
+        "defence": 1, "max_ap": 1,
         "perm_special": 1, "berserk_bonus": 1,
     },
     # combat_medic, charismatic_speaker, armor_piercer, death_apprentice
@@ -126,6 +131,8 @@ def award_title_with_buff(hero, key):
         buff_lines.append(f"+{buffs['max_hp']} Max HP")
     if "defence" in buffs:
         hero.defence += buffs["defence"]
+        # v0.7.12: track in base_defence so recalculate_defence() includes it
+        hero.base_defence = getattr(hero, "base_defence", 0) + buffs["defence"]
         buff_lines.append(f"+{buffs['defence']} DEF")
     if "max_atk" in buffs:
         hero.max_atk += buffs["max_atk"]
@@ -142,6 +149,13 @@ def award_title_with_buff(hero, key):
     if "berserk_bonus" in buffs:
         hero.berserk_bonus = getattr(hero, "berserk_bonus", 0) + buffs["berserk_bonus"]
         buff_lines.append(f"+{buffs['berserk_bonus']} Berserk")
+
+    # v0.7.20 (Nathan's call): Brawl Master — 20% permanent ATK multiplier.
+    # Stored as a flag on the hero; applied in warrior_skill_base_roll (combat.py)
+    # and basic attack roll so it scales with gear/stats instead of being flat.
+    if key == "brawl_master":
+        hero.brawl_master_atk_mult = 1.20
+        buff_lines.append("+20% ATK")
 
     if buff_lines:
         print("  " + "  |  ".join(buff_lines))
@@ -162,18 +176,19 @@ def check_jack_of_all_trades(hero):
 
     beginner_skills = ["power_strike", "heal", "war_cry"]
     if all(hero.skill_ranks.get(s, 0) >= 1 for s in beginner_skills):
-        hero.max_hp  += 1
-        hero.hp       = min(hero.hp + 1, hero.max_hp)
+        hero.max_hp  += 5
+        hero.hp       = min(hero.hp + 5, hero.max_hp)
         hero.max_atk += 1
         hero.min_atk += 1
         hero.defence += 1
+        hero.base_defence = getattr(hero, "base_defence", 0) + 1
         hero.max_ap += 1
         hero.ap      = min(hero.ap + 1, hero.max_ap)
         print("\n" + "=" * 45)
         print("🏅  TITLE UNLOCKED: Jack of All Trades!")
         print("=" * 45)
         print("You've mastered offense, defense, and healing.")
-        print("\n  +1 HP  |  +1 ATK  |  +1 DEF  |  +1 AP")
+        print("\n  +5 HP  |  +1 ATK  |  +1 DEF  |  +1 AP")
         print("=" * 45)
         award_title(hero, "jack_of_all_trades")
 
@@ -238,7 +253,7 @@ def check_true_jack_of_all_trades(hero):
     every skill rather than mastering one. Fires after any skill upgrade.
 
     Buffs (applied once via award_title_with_buff):
-      +5 Max HP  |  +1 ATK  |  +2 DEF  |  +1 Max AP
+      +5 Max HP  |  +1 ATK  |  +1 DEF  |  +1 Max AP
       +1 Adrenaline (perm_special)  |  +1 Berserk damage
     """
     if "true_jack_of_all_trades" in hero.titles:
@@ -264,7 +279,7 @@ def check_skill_mastery(hero, skill_key):
     Call this after every skill upgrade in show_skill_tree.
 
     Mastery titles and their passive effects:
-      power_strike  → Brawl Master        (+2 min/max ATK — applied on award)
+      power_strike  → Brawl Master        (+20% ATK multiplier + Power Strike rank 5 scales to 220%)
       heal          → Combat Medic        (passive: +10% HP regen end of player turn — flagged)
       war_cry       → Charismatic Speaker (passive: +15% ATK whole fight — flagged)
       defence_break → Armor Piercer       (passive: -1 enemy DEF on basic ATK — flagged)
@@ -276,6 +291,7 @@ def check_skill_mastery(hero, skill_key):
         "war_cry":        "charismatic_speaker",
         "defence_break":  "armor_piercer",
         "death_defier":   "death_apprentice",
+        "dual_wielder":   "assassin",  # Session 19
     }
 
     title_key = MASTERY_MAP.get(skill_key)
@@ -292,14 +308,19 @@ def check_skill_mastery(hero, skill_key):
         "charismatic_speaker": "Charismatic Speaker",
         "armor_piercer":       "Armor Piercer",
         "death_apprentice":    "Death's Apprentice",
+        "assassin":            "Assassin",
     }
 
+    # TODO (Session 19): bleed dmg/turns for Assassin's passive not yet
+    # confirmed by Nathan — placeholder values below, do not ship without
+    # checking. Chance (10%) and score value (250) ARE confirmed.
     MASTERY_DESC = {
-        "brawl_master":        "+2 Min/Max ATK permanently.",
+        "brawl_master":        "+20% ATK permanently. Power Strike now deals 220% damage at Rank 5.",
         "combat_medic":        "Passive: Restore 10% max HP at the end of each of your combat turns.",
         "charismatic_speaker": "Passive: +15% ATK bonus for the entire fight (applied at fight start).",
         "armor_piercer":       "Passive: Your basic attacks reduce enemy DEF by 1 each hit.",
         "death_apprentice":    "Passive: Death Defier costs 1 less AP. When Death Defier saves you, death itself reaches through you — the enemy takes 20% of your max HP as psychic damage, ignoring defence.",
+        "assassin":            "Passive: Your attacks have a 10% chance to inflict bleed. [dmg/turns TBD]",
     }
 
     print("\n" + "=" * 50)
