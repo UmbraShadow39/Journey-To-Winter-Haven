@@ -7,6 +7,96 @@ For full version-by-version detail see [DEVLOG.md](DEVLOG.md).
 
 ---
 
+## v0.8 ERA — Terminal Polish & Quest Foundations
+
+## v0.8.09 — Tom's Emporium of Darkness (Halloween Vendor NPC)
+*September 28, 2026 | Session 33 | Seasonal vendor, candy shop, upgrade system, premium buyback, 4 files changed*
+
+Built Tom, the Halloween seasonal vendor — a corrupted Teraan dark magic practitioner who believes he is "Darkness Incarnate." Disguise potion illusion entrance crumbles to reveal a pudgy balding man in front of a broom closet. First visit gets the full demon illusion; return visits the player shuts him down ("Tom, stop"). Tom is the single hub for all Halloween commerce: candy shop (Silver Tonic 3, Vine Totem 12, Pumpkin Head 20 candy), Halloween gear rarity upgrades (5/8/12/18/25/35 candy scaling poor→mythril), candy↔gold exchange (10g per candy, moved from merchant), and premium buyback (Soul Pendant, Charged Jagged Rock, Waterlogged Stone at 1.5× merchant rate). Added 7 new Equipment fields in shared.py (magic_res, dread_aura_chance, vine_dc, vine_dmg, vine_max_turns, vine_max_charges, vine_charges). Builder functions create Pumpkin Head and Vine Totem at any rarity from existing stat tables. Wired into interlude via "H" option with talked_tom flag. Removed candy exchange from merchant. Files changed: `collectibles.py`, `shared.py`, `story.py`, `merchant.py`.
+
+## v0.8.08 — Sharpened Sucker Bug Fixes, Trickster Heal, Alpha Monster AI
+*September 15, 2026 | Session 32 | 4 bug fixes, alpha monster AI system, 4 files changed*
+
+Fixed four bugs in the Halloween Trickster/Sharpened Sucker system: debug menu couldn't give a Sharpened Sucker (missing if/elif branch); vampiric heal was a dead attribute (set on item, never read in combat); Trickster's Lollipop Lick heal never fired (`collect_dot_ticks(warrior)` missing `is_player=True`); weapon bleed dialogue hardcoded to Javelina Tusk text (added weapon name branching). Built alpha monster AI: `alpha_special` for seasonal monsters (guaranteed first special + 66% after) and `alpha_regular` framework for difficulty-exclusive alphas (guaranteed first + 50%). Files changed: `combat.py`, `debug.py`, `monsters.py`, `collectibles.py`.
+
+## v0.8.07 — The Trickster (T2 Halloween Alpha), Sharpened Sucker Weapon
+*September 2–14, 2026 | Session 31 | T2 Halloween monster, rarity-scaled weapon, dual wield fixes*
+
+Built The Trickster (T2 Halloween alpha, HP 25, ATK 3-5, DEF 2, AP 3) with Lollipop Flurry special (basic swing + cascading jabs with stacking bleeds) and Lollipop Lick passive (heals 50% of bleed damage, can overheal to 150%). Built the Sharpened Sucker rarity-scaled weapon with three-tier unlock (damage → bleed → vampiric heal → multi-strike across 7 rarities). Changed Enchanted Seed Launcher from accessory to weapon slot with dual wield support. Fixed `roll_halloween_drop` to use `roll_rarity()`, 100% drop chance, removed duplicate check. Files changed: `collectibles.py`, `combat.py`, `debug.py`, `monsters.py`.
+
+## v0.8.06 — Jack O'Lantern, Diseased Rat, Bestiary Rewrite, Difficulty Exclusives
+*September 2–14, 2026 | Session 30 | T1 Halloween monster, Noob-exclusive alpha, bestiary overhaul, magic resistance, 9 files changed*
+
+Built Giant Animated Jack O'Lantern (T1 Halloween alpha, HP 18, ATK 2-4, Exploding Pumpkin Seeds special, drops Enchanted Seed Launcher). Built Giant Diseased Rat (Noob-exclusive T1 alpha, Plague Bite with escalating disease stacks). Built difficulty-exclusive monster framework (3-tuple MONSTER_TYPES, filtered by difficulty). Rewrote bestiary.py with per-difficulty bestiaries, auto-scaled stats, completion titles. Added magic_resistance stat (flat -1 elemental damage per point). Fixed ashenvale gate tuple bug, double stat/skill point on broke_bo_hold, !monster debug shortcut, T1 first-turn special timing (`rounds_in_combat <= 1`). Added leaderboard difficulty icons. Files changed: `collectibles.py`, `combat.py`, `debug.py`, `monsters.py`, `bestiary.py`, `hero.py`, `equipment.py`, `game.py`, `story.py`.
+
+## v0.8.05 — Stay with Bo Path, Gender Select Fix, Chaos Breath Rename, T1 Weight Shift
+*August 31, 2026 | Session 29 | 3 new story branches, mouse fix, boss move rename, balance tweak*
+
+Built the complete "Stay with Bo" story path (`fading_darkness == "2"`): willing participant yes/no → yes gets Might Draught (+1 permanent bonus damage), Nob arena greeting, +3 XP; no gets cell → Nob training ground → fight Nob yes/no — yes earns combat training (+1 max ATK, +4 XP), no earns hardship (+3 XP, +0.10 score multiplier, no stat/skill points, Nob ignores you). Five new story flags: `bo_stayed_still`, `bo_stayed_willing`, `bo_stayed_unwilling`, `bo_stayed_fought_nob`, `bo_stayed_refused_nob`. All flags wired into `simple_trainer_reaction` and the few-hours interlude with unique dialogue. Fixed Ashenvale Gate gender selection — mouse clicks now detect which label was clicked instead of always returning Male; added mouse hover highlighting. Renamed "Primordial Surge" → "Chaos Breath" across `monsters.py` and `combat.py` (Young Chimera is a first boss, not an endgame threat — name should match power level). Shifted Round 1 tier weights from 80/20 T1/T2 to 60/40 — nearly half of opening fights now draw a Tier 2 opponent instead of a free Slime/Goblin. Files changed: `story.py`, `score.py`, `ashenvale_gate.py`, `monsters.py`, `combat.py`.
+
+## v0.8.04 — Seasonal Collectibles System
+*August 11, 2026 | Session 28 | 4 seasonal events, 8 monsters, Collection Book, permanent score multipliers*
+
+Built `collectibles.py` (1,963 lines) — a full seasonal event system with real-world month detection, persistent collection tracking (seasonal_data.json), and a Collection Book with permanent score multiplier rewards. August: Birthday Cake replaces Frostpine Tonic (+50 if saved, +0.10 collection mult). March: Tome of Knowledge found in explorable bookshelf room (skill rank-up, +0.10 mult). October: 4-tier Halloween roster (Jack O'Lantern/Trickster/Werewolf/Horseman) with unique gear drops forming a 4-piece Halloween Warrior set — Dread Aura set bonus (guaranteed first-turn fear, 25% per turn after, +0.25 mult). December: Winter Solstice 4-tier roster (Elf/Gingerbread/Frosty/Krampus, +0.25 mult). Max permanent bonus: +0.70 across all collections. Integration hooks documented but not yet wired. Files changed: `collectibles.py` (new).
+
+## v0.8.03 — Pygame Scene Manager, Ashenvale Gate Cutscene, XP Bar & Crafter QoL
+*August 2, 2026 | Session 27 | Scene system, first cutscene, two XP bar fixes, crafter cost estimate*
+
+Built the pygame scene manager (`game.py`) that keeps one window alive and routes between scenes via return strings — replaces the old subprocess launch. Refactored `title_screen.py` to receive `(screen, clock)` instead of creating its own window. Built the first visual-novel cutscene (`ashenvale_gate.py`): Ashenvale Gates pixel art backdrop with semi-transparent text box, 9 pages of Enter-to-advance narration, cyan "Press Enter" prompt. Files changed: `game.py` (new), `ashenvale_gate.py` (new), `title_screen.py`, `ui.py`, `crafter.py`.
+
+**New: Pygame scene system:**
+- `game.py` — master loop: `pygame.init()` once, creates window, dispatches to scene functions via `while scene != "quit"` loop
+- Each scene accepts `(screen, clock)`, returns a string (`"new_game"`, `"quit"`, `"day_one"`, etc.)
+- Title screen no longer calls `pygame.init()` or `sys.exit()` — just returns choice strings
+
+**New: Ashenvale Gate cutscene:**
+- Loads Ashenvale Gates pixel art (384×216 ×3 scale) as backdrop
+- Semi-transparent text box (`set_alpha(180)`) at bottom quarter of screen
+- 9 story pages with Enter-to-advance, "Press Enter to continue..." prompt in cyan
+- Returns `"day_one"` on completion (placeholder for next scene)
+
+**Bug fixes:**
+- **XP bar invisible at low XP** — at 1/45 XP the fill math rounded to 0 blocks; now forces `filled = 1` when `current > 0`
+- **Double XP bar after level-up** — animation's last `\r` frame was committed as a permanent line, then the final bar printed again. Removed the `else` newline write; added `\r` + clear before the single final bar print
+
+**QoL:**
+- **Crafter recipe cost estimate** — new `_estimate_recipe_cost()` shows total gold needed (component buy cost + craft fee) in the recipe menu when components are missing. Displayed as `💰 Est. total: 51g (36g components + 15g craft fee)`. No estimate shown when recipe is already craftable
+
+## v0.8.02 — Submit Path Branching, Universal Dev Shortcuts, Latent Bug Sweep
+*July 26, 2026 | Session 26 | Story branching, Nob dialogue flags, and four pre-existing bug fixes*
+
+First session of the v0.8 era. Expanded the submit path from a bare two-line ending into a full branching Nob interaction with three distinct outcomes, wired unique story flags into Nob's interlude and trainer reactions, added a score multiplier for handicap paths, and fixed four pre-existing bugs that have been lurking since v0.7. Files changed: `Journey_To_Winter_Haven_v_08_02.py`, `story.py`, `hero.py`, `combat.py`, `score.py`.
+
+**New: Sex-based stat profiles (v0.8.01):**
+- **Male:** 30 HP, ATK 1-6, 0 DEF, 3 AP — raw power, high variance
+- **Female:** 27 HP, ATK 2-4, 1 DEF, 4 AP — tighter damage, innate armor, extra action point
+- Asymmetric by design: extra AP compensates lower ATK average (3.0 vs 3.5)
+
+**New: Submit path — full Nob interaction (v0.8.02):**
+- After submitting, Bo escorts player to Under-Haven → meets Nob → locked in cell → Nob wakes you and roars in your face
+- **Cower** → flag `nob_submit_cower`, 2 XP, +0.10 score multiplier ("Nob's bet")
+- **Stand firm → Hit Nob** → flag `nob_submit_hit`, +1 min ATK, +1 stat point, +1 skill point, 2 XP
+- **Stand firm → Refrain** → flag `nob_submit_refrain`, 2 XP, +0.10 score multiplier ("Nob's bet")
+- Nob's interlude and trainer reaction both deliver unique dialogue per flag
+- Score multiplier functions as a handicap reward — sacrifice training stats for a permanent score boost
+
+**New: Universal dev shortcuts (v0.8.02):**
+- `!debug`, `!q`, `!c` now work from ANY input prompt (rest menu, equip screen, merchant, everywhere) via the universal `input()` override
+
+**Balance:**
+- **Champion jackpot chances bumped:** Part 1 bonus buff 20% → 30%, Part 2 double specialization 10% → 15%
+
+**Bug fixes (all pre-existing):**
+- **`warrior_arena_submit` flag was never added to `story_flags`** — `arena_origin` was set but the flag check in `simple_trainer_reaction` and `nob_interlude_scene` was dead code
+- **NoneType crash on `!q` restart** — bare `warrior` parameter reference went stale during restart; fixed to `_get_gw()`
+- **`RestartException` in combat called `intro_story()` with stale `GAME_WARRIOR`** — now re-raises to `intro_story()`'s proper handler; added safety net in main loop
+- **Escape path trainer text** now references Bo by name
+
+## v0.8.01 — Sex Stat Profiles
+*July 26, 2026 | Session 26 | Foundation change — stat profiles differ by sex*
+
+Expanded sex selection from ATK-range-only (both averaging 3.5) to full stat profiles with intentionally asymmetric design.
+
 ## v0.7.18 — Champion Difficulty Fix, Mastery Rework, Armor Socket Expansion, End-Game Polish
 *July 23, 2026 | Session 25 | Playtest-driven fixes from live Champion runs (Patronus & Dark Champion paths)*
 
@@ -889,3 +979,8 @@ Three dated files mark the true starting point of the project before the proper 
 **September 17** (`arena_battler_sept_17_2025.py`, 763 lines) — `clear_screen()`, `continue_text()`, and `check()` introduced — utility functions that still exist in the game today. A `main()` function wraps the game loop. The tournament intro story appears for the first time. Gold and essence tracking via globals.
 
 **October 2** (`arena_battler_October_2_2025.py`, 763 lines) — Near-identical to the September build, a stable checkpoint before the architecture push that followed.
+
+## v0.8.04 — Seasonal Collectibles System
+*August 11, 2026 | Session 28 | 4 seasonal events, 8 monsters, Collection Book, permanent score multipliers*
+
+Built `collectibles.py` (1,963 lines) — a full seasonal event system with real-world month detection, persistent collection tracking (seasonal_data.json), and a Collection Book with permanent score multiplier rewards. August: Birthday Cake replaces Frostpine Tonic (+50 if saved, +0.10 collection mult). March: Tome of Knowledge found in explorable bookshelf room (skill rank-up, +0.10 mult). October: 4-tier Halloween roster (Jack O'Lantern/Trickster/Werewolf/Horseman) with unique gear drops forming a 4-piece Halloween Warrior set — Dread Aura set bonus (guaranteed first-turn fear, 25% per turn after, +0.25 mult). December: Winter Solstice 4-tier roster (Elf/Gingerbread/Frosty/Krampus, +0.25 mult). Max permanent bonus: +0.70 across all collections. Integration hooks documented but not yet wired.

@@ -24,11 +24,13 @@ from hero import SKILL_DEFS, show_skill_tree, skill_menu, compute_adrenaline_bon
 from monsters import (
     monster_ai_check, fallen_warp_should_trigger, Young_Chimera, Patronus,
     _apply_psychic_debuff_to_stats, _clear_psychic_debuff, _clear_psychic_drown,
-    psychic_shred, trigger_pressure_feedback, _restore_primordial_stats,
+    psychic_shred, trigger_pressure_feedback, _restore_chaos_breath_stats,
     _restore_patronus_def, _tick_patronus_war_cry, _tick_patronus_def_break,
     _tick_patronus_passive_first_aid, patronus_ai, patronus_war_cry,
     patronus_double_strike, patronus_power_charge, patronus_first_aid,
-    patronus_defence_break, CHIMERA_PASSIVE_HEAL_PCT,
+    patronus_defence_break, patronus_smite, _restore_patronus_smite_def,
+    CHIMERA_PASSIVE_HEAL_PCT,
+    tick_disease, clear_disease,
 )
 from crafter import pack_hunter_active, apex_predator_active, get_weapon_socket_procs
 from leaderboard import display_at_end_of_run
@@ -139,7 +141,7 @@ def monster_math_breakdown(attacker, defender, raw_roll, actual_physical, *,
       - Total immediate damage
 
     extra_parts: list of tuples like [("Poison", 2), ("Fire", 3)]
-    ignore_defence: set True for moves that bypass defence entirely (e.g. Primordial Surge)
+    ignore_defence: set True for moves that bypass defence entirely (e.g. Chaos Breath)
     """
     extra_parts = extra_parts or []
 
@@ -200,6 +202,10 @@ def monster_deal_damage(attacker, defender,
     # 4) Apply HP ONCE (single source of truth)
     defender.hp = max(0, defender.hp - total)
 
+    # 4b) Lycanthropy charge — werewolf damage converts the player
+    if attacker.name == "Female Werewolf" and total > 0:
+        _lycanthropy_tick(defender, total)
+
     # 5) Print math line
     monster_math_breakdown(
         attacker,
@@ -215,6 +221,154 @@ def monster_deal_damage(attacker, defender,
         _flayed_charge_tick(attacker, defender, actual_physical)
 
     return total
+
+
+def _lycanthropy_tick(warrior, damage):
+    """
+    Track lycanthropy conversion from werewolf damage.
+    Every point of damage = 1% conversion. At 100%: forced transformation.
+    Only fires when the attacker is a Female Werewolf.
+    """
+    if damage <= 0:
+        return False
+    if not hasattr(warrior, "lycanthropy_charge"):
+        warrior.lycanthropy_charge = 0
+    warrior.lycanthropy_charge = min(100, warrior.lycanthropy_charge + damage)
+    bar_filled = int(warrior.lycanthropy_charge / 10)
+    bar = "█" * bar_filled + "░" * (10 - bar_filled)
+    print(f"      🐺 Lycanthropy: [{bar}] {warrior.lycanthropy_charge}%")
+    if warrior.lycanthropy_charge >= 100:
+        print(wrap(
+            "\n🐺🌙 Your body convulses. Bones crack and reshape. "
+            "Fur erupts from your skin. The curse is complete — "
+            "you are no longer teraan."
+        ))
+        print("\n   🐺 You have become a Werewolf Youngling.")
+        print("   The arena falls silent as the crowd backs away.")
+        print("   Your adventure ends here... but something new begins.")
+        log(f"  [LYCANTHROPY] {warrior.name} transformed at 100% — run over")
+        return True
+    if warrior.lycanthropy_charge >= 75:
+        print("      ⚠️  The curse is taking hold — find a cure!")
+    elif warrior.lycanthropy_charge >= 50:
+        print("      ⚠️  You feel the wolf clawing at your mind...")
+    return False
+
+# ── ENTANGLE SYSTEM — Pumpkin Vine Totem ──────────────────────────
+
+def _get_str_modifier(enemy):
+    """
+    Derive a D&D-style STR modifier from enemy's max ATK.
+    10 is the baseline (modifier +0).
+    """
+    max_atk = getattr(enemy, 'max_atk', 5)
+    if max_atk <= 2:
+        return -2
+    elif max_atk <= 4:
+        return -1
+    elif max_atk <= 6:
+        return 0
+    elif max_atk <= 7:
+        return 1
+    elif max_atk <= 9:
+        return 2
+    elif max_atk <= 11:
+        return 3
+    elif max_atk <= 14:
+        return 4
+    else:
+        return 5
+
+
+def apply_entangle(enemy, dc, vine_dmg, max_turns):
+    """
+    Apply entangle effect to an enemy. Called when player uses
+    the Pumpkin Vine Totem accessory attack.
+    """
+    import random as _rng
+    enemy.entangled = True
+    enemy.entangle_dc = dc
+    enemy.entangle_vine_dmg = vine_dmg
+    enemy.entangle_turns_remaining = max_turns
+    enemy.entangle_current_turn = 0  # 0 = hasn't ticked yet
+
+    print()
+    print(f"   🌿 ENTANGLE!")
+    print(wrap(
+        f"    Twisted vines erupt from the totem and coil around "
+        f"{enemy.display_name}! They are rooted in place!"
+    ))
+    log(f"  [ENTANGLE] {enemy.display_name} entangled — DC {dc}, "
+        f"vine dmg {vine_dmg}, max {max_turns} turns")
+
+
+def tick_entangle(enemy):
+    """
+    Called at the start of the enemy's turn. Returns:
+        'skip'  — enemy loses their entire turn
+        'half'  — enemy broke free, attack at half damage
+        None    — not entangled, proceed normally
+    """
+    import random as _rng
+    if not getattr(enemy, 'entangled', False):
+        return None
+
+    enemy.entangle_current_turn += 1
+    enemy.entangle_turns_remaining -= 1
+
+    # Turn 1: pure lockdown, no damage
+    if enemy.entangle_current_turn == 1:
+        print(f"\n   🌿 {enemy.display_name} struggles against the vines!")
+        print(f"       Entangled — loses their attack!")
+        log(f"  [ENTANGLE] Turn 1 — {enemy.display_name} fully locked")
+        if enemy.entangle_turns_remaining <= 0:
+            _clear_entangle(enemy)
+        return 'skip'
+
+    # Turns 2+: vine damage, then strength check
+    vine_dmg = enemy.entangle_vine_dmg
+    enemy.hp -= vine_dmg
+    print(f"\n   🌿 Vines crush {enemy.display_name} for {vine_dmg} damage! "
+          f"(HP: {max(0, enemy.hp)}/{enemy.max_hp})")
+
+    if enemy.hp <= 0:
+        log(f"  [ENTANGLE] Vines killed {enemy.display_name} ({vine_dmg} dmg)")
+        _clear_entangle(enemy)
+        return 'skip'
+
+    # D20 + STR modifier vs DC
+    str_mod = _get_str_modifier(enemy)
+    roll = _rng.randint(1, 20)
+    total = roll + str_mod
+    dc = enemy.entangle_dc
+    mod_str = f"+{str_mod}" if str_mod >= 0 else str(str_mod)
+
+    print(f"       🎲 Strength check: d20({roll}) {mod_str} = {total} vs DC {dc}")
+
+    if total >= dc:
+        # Broke free — halved attack this turn
+        print(f"       💪 {enemy.display_name} tears free! (attack halved this turn)")
+        log(f"  [ENTANGLE] {enemy.display_name} broke free — roll {roll}{mod_str}={total} vs DC {dc}")
+        _clear_entangle(enemy)
+        return 'half'
+    else:
+        # Failed — skip attack
+        print(f"       🌿 {enemy.display_name} cannot break free!")
+        log(f"  [ENTANGLE] {enemy.display_name} failed check — roll {roll}{mod_str}={total} vs DC {dc}")
+        if enemy.entangle_turns_remaining <= 0:
+            print(f"       The vines wither and release their hold.")
+            _clear_entangle(enemy)
+        return 'skip'
+
+
+def _clear_entangle(enemy):
+    """Remove all entangle tracking from an enemy."""
+    enemy.entangled = False
+    enemy.entangle_dc = 0
+    enemy.entangle_vine_dmg = 0
+    enemy.entangle_turns_remaining = 0
+    enemy.entangle_current_turn = 0
+
 
 def collect_dot_ticks(hero, is_player=False):
     """
@@ -239,10 +393,15 @@ def collect_dot_ticks(hero, is_player=False):
         _resist_fire   = get_hero_element_resistance(hero, "fire")
         _resist_acid   = get_hero_element_resistance(hero, "acid")
 
+    # v0.8: flat magic_resistance stat — reduces elemental damage by 1/point
+    _flat_mr = int(getattr(hero, "magic_resistance", 0) or 0)
+
     def _apply_resist(amount, resist):
-        """Reduce a tick amount by a resistance fraction (0.0-1.0), rounded."""
+        """Reduce a tick amount by a resistance fraction (0.0-1.0), then flat MR."""
         if amount > 0 and resist:
-            return max(0, round(amount * (1 - resist)))
+            amount = max(0, round(amount * (1 - resist)))
+        if amount > 0 and _flat_mr > 0:
+            amount = max(0, amount - _flat_mr)
         return amount
 
     # ==========================
@@ -431,6 +590,53 @@ def collect_dot_ticks(hero, is_player=False):
                 fade_msgs.append("🩸 The savage wounds stop bleeding.")
             else:
                 fade_msgs.append(f"🩸 {hero.name}'s savage wounds stop bleeding.")
+
+    # ==========================
+    # TRICKSTER BLEED STACKS (Lollipop Flurry — 1-turn bleeds with vampiric heal)
+    # ==========================
+    trickster_bleeds = getattr(hero, "bleed_stacks", [])
+    if trickster_bleeds:
+        new_tbleeds = []
+        trickster_heal_total = 0
+        for idx, bleed in enumerate(trickster_bleeds, start=1):
+            if bleed.get("skip", False):
+                bleed["skip"] = False
+                new_tbleeds.append(bleed)
+                continue
+            tick = bleed.get("damage", 2)
+            parts.append((f"🍭 Lollipop Bleed {idx}", tick))
+            total += tick
+            # Track heal from trickster-sourced bleeds
+            if bleed.get("source") == "trickster":
+                trickster_heal_total += tick
+            bleed["turns_left"] -= 1
+            if bleed["turns_left"] > 0:
+                new_tbleeds.append(bleed)
+        hero.bleed_stacks = new_tbleeds
+
+        # Lollipop Lick — Trickster heals 50% of bleed damage dealt
+        if trickster_heal_total > 0 and not is_player:
+            # hero is the player, attacker (enemy) heals — but we don't have
+            # enemy ref here. The heal is applied in battle_inner instead.
+            pass
+        elif trickster_heal_total > 0 and is_player:
+            # The player is bleeding from Trickster jabs — store the heal
+            # amount on the hero so battle_inner can heal the Trickster
+            hero._trickster_heal_pending = int(trickster_heal_total * 0.50)
+
+        if not new_tbleeds and trickster_bleeds:
+            if is_player:
+                fade_msgs.append("🍭 The lollipop wounds stop bleeding.")
+            else:
+                fade_msgs.append(f"🍭 {hero.name}'s lollipop wounds stop bleeding.")
+
+    # ==========================
+    # DISEASE (Giant Diseased Rat — Plague Bite)
+    # ==========================
+    if getattr(hero, "disease_stacks", 0) > 0:
+        disease_dmg, disease_parts = tick_disease(hero, is_player=is_player)
+        parts.extend(disease_parts)
+        total += disease_dmg
 
     # ==========================
     # PSYCHIC DEBUFF COUNTDOWN
@@ -634,6 +840,14 @@ def use_potion_menu(hero, in_combat=False):
         # Rename only for display
         if potion == "heal":
             label = "Potion"
+        elif potion == "birthday_cake":
+            label = "🎂 Birthday Cake"
+        elif potion == "book_of_lost_secrets":
+            label = "📖 Book of Lost Secrets"
+        elif potion == "nobs_secret_sauce":
+            label = "🧪 Nob's Secret Sauce"
+        elif potion == "swift_potion":
+            label = "⚡ Swift Potion"
 
         print(f"{i}) {label} x{count}")
     print(f"{len(available_potions) + 1}) Go back")
@@ -829,6 +1043,9 @@ def use_potion_menu(hero, in_combat=False):
             hero.bleed_dmg_max = 0
             hero.warrior_bleed_dots = []
             cleared.append("bleed")
+        if getattr(hero, "disease_stacks", 0) > 0:
+            clear_disease(hero, restore_stats=True)
+            cleared.append("disease")
 
         if cleared:
             print(f"\n🧪 The Cure-All burns clean. Cleared: {', '.join(cleared)}.")
@@ -885,6 +1102,12 @@ def use_potion_menu(hero, in_combat=False):
         hero.bleed_dmg_min = 0
         hero.bleed_dmg_max = 0
         hero.warrior_bleed_dots = []
+        if getattr(hero, "disease_stacks", 0) > 0:
+            clear_disease(hero, restore_stats=True)
+        # Lycanthropy cure
+        if getattr(hero, "lycanthropy_charge", 0) > 0:
+            hero.lycanthropy_charge = 0
+            print("🐺 The werewolf curse recedes — lycanthropy cured!")
         # Restore 2 AP
         hero.ap = min(hero.max_ap, hero.ap + 2)
         print(f"🌿 HP restored to {hero.hp}/{hero.max_hp}")
@@ -1069,6 +1292,172 @@ def use_potion_menu(hero, in_combat=False):
         space()
         return "bonus" if is_bonus else True
 
+    elif potion_type == "arcane_ward":
+        if in_combat:
+            hero.potions[potion_type] += 1  # refund
+            if is_bonus:
+                hero.bonus_action_used = False
+            print("\n🔮 You can't use an Arcane Ward in the middle of a fight.")
+            print("    Save it for between battles.")
+            continue_text()
+            space()
+            return False
+
+        hero.magic_resistance = getattr(hero, "magic_resistance", 0) + 1
+        print("\n🔮 You drink the Arcane Ward. A faint shimmer ripples across your skin")
+        print(f"    — elemental attacks feel less threatening. (+1 Elemental Resistance)")
+        print(f"    🔮 Elemental Resistance: {hero.magic_resistance}")
+        continue_text()
+        space()
+        return "bonus" if is_bonus else True
+
+    elif potion_type == "fort_draught":
+        if in_combat:
+            hero.potions[potion_type] += 1  # refund
+            if is_bonus:
+                hero.bonus_action_used = False
+            print("\n🛡️ You can't use a Fortification Draught in the middle of a fight.")
+            print("    Save it for between battles.")
+            continue_text()
+            space()
+            return False
+
+        hero.defence += 1
+        print("\n🛡️ You drink the Fortification Draught. Your skin hardens")
+        print(f"    — you feel tougher, more resilient. (+1 Defence)")
+        print(f"    🛡️ Defence: {hero.defence}")
+        continue_text()
+        space()
+        return "bonus" if is_bonus else True
+
+    elif potion_type == "silver_tonic":
+        # Silver Tonic — cure lycanthropy. Usable in or out of combat.
+        lyc = getattr(hero, "lycanthropy_charge", 0)
+        if lyc <= 0:
+            hero.potions[potion_type] += 1  # refund
+            if is_bonus:
+                hero.bonus_action_used = False
+            print("\n🐺 You drink the Silver Tonic, but there's no curse to purge.")
+            print("    The liquid burns going down for nothing.")
+            continue_text()
+            space()
+            return False
+
+        hero.lycanthropy_charge = 0
+        print("\n🐺 You drink the Silver Tonic. Liquid silver courses")
+        print("    through your veins — agonizing, but cleansing.")
+        print(f"    The werewolf curse recedes completely. (Lycanthropy: 0%)")
+        continue_text()
+        space()
+        return "bonus" if is_bonus else True
+
+    elif potion_type == "monster_candy":
+        # Monster Candy — throw at enemy to fear them for 1 turn.
+        # Only usable in combat.
+        if not in_combat:
+            hero.potions[potion_type] += 1  # refund
+            if is_bonus:
+                hero.bonus_action_used = False
+            print("\n👹 Monster Candy can only be used in combat!")
+            continue_text()
+            space()
+            return False
+        # Fear the enemy — they skip their next turn
+        print("\n👹 You hurl the Monster Candy at your foe!")
+        print("    It explodes in a burst of dark sugar and spectral faces!")
+        # Set turn stop on enemy
+        enemy = getattr(hero, "_current_enemy", None)
+        if enemy:
+            enemy.turn_stop = 1
+            enemy.turn_stop_reason = "feared"
+            print(f"    {enemy.display_name} is FEARED — they lose their next turn!")
+            log(f"  [MONSTER CANDY] {enemy.display_name} feared for 1 turn")
+        else:
+            print("    Dark energy crackles but finds no target...")
+        continue_text()
+        space()
+        return "bonus" if is_bonus else True
+
+    # ── Seasonal collectibles (v0.8.04) ──
+
+    elif potion_type == "birthday_cake":
+        from collectibles import apply_birthday_cake
+        result = apply_birthday_cake(hero, in_combat)
+        if result:
+            return "bonus" if is_bonus else True
+        return False
+
+    elif potion_type == "book_of_lost_secrets":
+        if in_combat:
+            hero.potions[potion_type] += 1  # refund
+            if is_bonus:
+                hero.bonus_action_used = False
+            print("\n📖 You can't study the Book in the middle of a fight.")
+            print("    Save it for between battles.")
+            continue_text()
+            space()
+            return False
+        from collectibles import apply_book_of_lost_secrets
+        result = apply_book_of_lost_secrets(hero)
+        if result:
+            return "bonus" if is_bonus else True
+        return False
+
+    # ── Speed potions (v0.8.05) ──
+
+    elif potion_type == "nobs_secret_sauce":
+        if not in_combat:
+            hero.potions[potion_type] += 1  # refund
+            if is_bonus:
+                hero.bonus_action_used = False
+            print("\n🧪 Nob's Secret Sauce is meant for the arena — save it for combat.")
+            continue_text()
+            space()
+            return False
+        print(wrap(
+            "You uncork the dark vial and down its contents. The taste is foul — like burnt herbs "
+            "and something you'd rather not identify. But the effect is immediate.",
+        ))
+        space()
+        # Double attack flag
+        hero.speed_potion_active = True
+        # Stat buff: +15% ATK, +1 min ATK, +1 DEF, +1 AP for 2 turns
+        hero.nobs_sauce_turns = 2
+        atk_boost = max(1, math.ceil(hero.max_atk * 0.15))
+        hero.nobs_sauce_atk_boost = atk_boost
+        hero.nobs_sauce_min_boost = 1
+        hero.min_atk += 1
+        hero.max_atk += atk_boost
+        hero.defence += 1
+        hero.ap += 1
+        print("🧪 Nob's Secret Sauce kicks in!")
+        print(f"   ⚔️ +{atk_boost} ATK ({'+15%'}), +1 min ATK for 2 turns")
+        print(f"   🛡️ +1 DEF for 2 turns")
+        print(f"   ⚡ +1 AP restored")
+        print(f"   💨 Double attack this turn!")
+        continue_text()
+        space()
+        return "bonus" if is_bonus else True
+
+    elif potion_type == "swift_potion":
+        if not in_combat:
+            hero.potions[potion_type] += 1  # refund
+            if is_bonus:
+                hero.bonus_action_used = False
+            print("\n⚡ The Swift Potion is meant for combat — save it for a fight.")
+            continue_text()
+            space()
+            return False
+        print(wrap(
+            "You drink the Swift Potion. Your limbs feel light, your reflexes sharpen.",
+        ))
+        space()
+        hero.speed_potion_active = True
+        print("⚡ Swift Potion active! Double attack this turn!")
+        continue_text()
+        space()
+        return "bonus" if is_bonus else True
+
     else:
         print(f"\nYou used {potion_type}, but its effect isn't implemented yet.")
         space()
@@ -1187,11 +1576,6 @@ def rest_phase(hero):
         raw = input("\nChoose: ")
         if isinstance(raw, tuple):
             print("Debug input ignored here.")
-            continue
-
-        # --- Dev command: debug (rest version) ---
-        if isinstance(raw, str) and raw.strip().lower() == "debug":
-            debug_menu(hero, None)
             continue
 
         choice = raw.strip()
@@ -1536,6 +1920,9 @@ def clear_all_status_effects(hero):
     hero.acid_defence_loss = 0
     hero.warrior_bleed_dots = []
 
+    # Disease — full restore on intervention (stats AND current values)
+    clear_disease(hero, restore_stats=True)
+
     # v0.6.14: combat fatigue — wipe on fight end, DEF auto-restores via the
     # effective_def calc (apply_defence subtracts fatigue_def_loss from base).
     hero.fatigue_def_loss  = 0
@@ -1605,6 +1992,9 @@ def reset_between_rounds(hero, full_rest=False):
     hero.acid_stacks = []
     hero.acid_defence_loss = 0
     hero.warrior_bleed_dots = []       # Savage Slash stacks don't carry between rounds
+
+    # Disease — stats restore (max AP/HP caps come back, current stays)
+    clear_disease(hero, restore_stats=True)
 
     # v0.6.14: combat fatigue resets between rounds — each new fight starts fresh
     hero.fatigue_def_loss  = 0
@@ -2031,6 +2421,30 @@ def chimera_fury_add(enemy, warrior, rank_used):
         ))
 
 
+def patronus_smite_add(enemy, warrior, rank_used):
+    """
+    Called whenever the player uses a ranked skill while fighting Patronus.
+    Adds rank_used * 10 smite charge. At 100: sets smite_overloading flag.
+    The actual Smite fires at the START of Patronus's next turn (in combat loop).
+    """
+    if enemy.name != "Patronus":
+        return
+    gain = rank_used * 10
+    enemy.smite_meter = min(100, enemy.smite_meter + gain)
+    bar_filled = int(enemy.smite_meter / 10)
+    bar = "█" * bar_filled + "░" * (10 - bar_filled)
+    print(wrap(
+        f"🔥 Patronus Smite: [{bar}] {enemy.smite_meter}%  "
+        f"(+{gain} from Rank {rank_used} skill)"
+    ))
+    if enemy.smite_meter >= 100 and not enemy.smite_overloading:
+        enemy.smite_overloading = True
+        print(wrap(
+            f"\n⚠️ PATRONUS'S EYES BLAZE WITH DIVINE FURY! "
+            f"He is channeling Smite — brace yourself!"
+        ))
+
+
 def chimera_passive_heal(enemy, warrior):
     """
     v0.6.16: Fires at the START of every Chimera turn, unconditionally.
@@ -2433,6 +2847,9 @@ def heal(hero, chosen_rank=None, mode="rest"):
             heal_penalty = rot_loss / rot_base  # e.g. 0.40 if 40% max HP was rotted
             clear_rot(hero, restore_hp=False, source="first_aid")
             cured.append("Rot")
+        if getattr(hero, "disease_stacks", 0) > 0:
+            clear_disease(hero, restore_stats=True)
+            cured.append("Disease")
 
     # Apply heal (no overheal) — reduced if rot was cured this turn
     percent     = HEAL_PERCENTS[chosen_rank]
@@ -2500,13 +2917,38 @@ def war_cry(hero, enemy, chosen_rank=None):
 
     learned = min(learned, 5)
 
-    # Pick rank: in combat we auto-pick highest affordable (like your Heal/PS pattern)
+    # v0.8.03: rank picker — allows downcasting like Power Strike / First Aid
     if chosen_rank is None:
         affordable = [r for r in range(1, learned + 1) if hero.ap >= war_cry_ap_cost(r, hero)]
         if not affordable:
             print("You don't have enough AP for War Cry.")
             return False
-        chosen_rank = max(affordable)
+
+        if len(affordable) == 1:
+            chosen_rank = affordable[0]
+        else:
+            while True:
+                print("\n🗣️ Choose War Cry rank:")
+                print(f"🔵 AP: {hero.ap}")
+                print("0) Back")
+                for r in range(learned, 0, -1):
+                    cost = war_cry_ap_cost(r, hero)
+                    pct = WAR_CRY_PERCENTS[r]
+                    turns = WAR_CRY_TURNS[r]
+                    label = f"Rank {r} ({int(pct*100)}% ATK buff, {turns} turns, Cost {cost} AP)"
+                    if hero.ap >= cost:
+                        print(f"  {r}) {label}")
+                    else:
+                        print(f"  {r}) {label} [NOT ENOUGH AP]")
+                pick = input("> ").strip()
+                if pick == "0":
+                    return False
+                if pick.isdigit():
+                    r = int(pick)
+                    if 1 <= r <= learned and hero.ap >= war_cry_ap_cost(r, hero):
+                        chosen_rank = r
+                        break
+                print("Invalid choice.")
     else:
         chosen_rank = max(1, min(int(chosen_rank), learned))
 
@@ -2852,8 +3294,40 @@ def defence_break(warrior, enemy, chosen_rank=None):
 
     # Clamp to learned rank
     max_rank = min(learned, 5)
+
+    # v0.8.03: rank picker — allows downcasting like Power Strike / First Aid
     if chosen_rank is None:
-        chosen_rank = max_rank
+        affordable = [r for r in range(1, max_rank + 1)
+                      if warrior.ap >= defence_break_ap_cost(r)]
+        if not affordable:
+            print("You don't have enough AP for Defence Break.")
+            return False
+
+        if len(affordable) == 1:
+            chosen_rank = affordable[0]
+        else:
+            while True:
+                print("\n🛡️ Choose Defence Break rank:")
+                print(f"🔵 AP: {warrior.ap}")
+                print("0) Back")
+                for r in range(max_rank, 0, -1):
+                    cost = defence_break_ap_cost(r)
+                    pct, turns = DEFENCE_BREAK_STATS[r]
+                    label = f"Rank {r} ({int(pct*100)}% DEF reduction, {turns} turns, Cost {cost} AP)"
+                    if warrior.ap >= cost:
+                        print(f"  {r}) {label}")
+                    else:
+                        print(f"  {r}) {label} [NOT ENOUGH AP]")
+                pick = input("> ").strip()
+                if pick == "0":
+                    return False
+                if pick.isdigit():
+                    r = int(pick)
+                    if 1 <= r <= max_rank and warrior.ap >= defence_break_ap_cost(r):
+                        chosen_rank = r
+                        break
+                print("Invalid choice.")
+
     chosen_rank = max(1, min(int(chosen_rank), max_rank))
 
     ap_cost = defence_break_ap_cost(chosen_rank)
@@ -3439,6 +3913,39 @@ def enemy_attack(enemy, warrior, resolve_special=True):
     monster's "50% per turn" special was actually landing ~75% of the time:
     1 - (0.5 miss outer * 0.5 miss inner). v0.7.18 fix.
     """
+    # ── 4-PIECE HALLOWEEN DREAD AURA (v0.8.10) ──
+    # If full set is equipped, check for fear skip BEFORE anything else.
+    try:
+        from collectibles import dread_aura_active, check_dread_aura
+        if dread_aura_active(warrior):
+            _first = (enemy.rounds_in_combat <= 0)
+            if check_dread_aura(warrior, enemy, is_first_enemy_turn=_first):
+                return 0  # enemy feared — skips entire turn
+    except ImportError:
+        pass
+
+    # ── ENTANGLE CHECK — before anything else ──
+    entangle_result = tick_entangle(enemy)
+    if entangle_result == 'skip':
+        return 0  # enemy did nothing
+    # entangle_result == 'half' → halve damage below (flag stored)
+    _entangle_halve = (entangle_result == 'half')
+
+    # ── PUMPKIN HEAD SOLO DREAD AURA (v0.8.09) ──
+    # Separate from the 4-piece set bonus. Checks the helm's dread_aura_chance.
+    # Only procs if the 4-piece set bonus is NOT active (no double-dipping).
+    import random as _rng_dread
+    _helm = getattr(warrior, "equipment", {}).get("helm")
+    _solo_dread_chance = getattr(_helm, "dread_aura_chance", 0.0) if _helm else 0.0
+    if _solo_dread_chance > 0:
+        from collectibles import dread_aura_active
+        if not dread_aura_active(warrior):  # only if 4-piece NOT active
+            if _rng_dread.random() < _solo_dread_chance:
+                print(f"\n   \U0001f383 {enemy.display_name} flinches at the helm\'s eerie glow!")
+                print(f"      Dread overwhelms them — they lose their attack!")
+                log(f"  [DREAD AURA] Solo proc ({int(_solo_dread_chance*100)}%) — {enemy.display_name} skips turn")
+                return 0
+
     enemy.rounds_in_combat += 1
 
     # v0.6.16: Young Chimera passive heal — fires at START of every turn,
@@ -3521,6 +4028,10 @@ def enemy_attack(enemy, warrior, resolve_special=True):
 
     # Roll damage (Normal Attack)
     roll = enemy.max_atk if force_max else enemy.attack_roll()
+    # Entangle break-free: attack at half power
+    if _entangle_halve:
+        roll = max(1, roll // 2)
+        print(f"   🌿 Still shaking off vines — attack weakened!")
     actual = warrior.apply_defence(roll, attacker=enemy)
     warrior.hp = max(0, warrior.hp - actual)
 
@@ -3696,6 +4207,83 @@ def player_basic_attack(warrior, enemy, multiplier=1.0, use_accessory=False):
     elif has_weapon and not has_accessory:
         use_accessory = False
 
+    # --- Enchanted Seed Launcher: fires seed cascade as weapon attack ---
+    # When the player attacks with a Seed Launcher equipped (main or off hand),
+    # fire the seed cascade first (TRUE damage, ignores defence), then swing
+    # the OTHER hand if it holds a weapon (dual wield combo).
+    _launcher = None
+    _launcher_slot = None
+    for _slot in ("main_hand", "off_hand", "weapon"):
+        _equip = warrior.equipment.get(_slot)
+        if _equip and getattr(_equip, "name", "") == "Enchanted Seed Launcher":
+            _launcher = _equip
+            _launcher_slot = _slot
+            break
+    if _launcher and not use_accessory:
+        from collectibles import SEED_LAUNCHER_STATS
+        seed_min = getattr(_launcher, "seed_min_count", 1)
+        seed_max = getattr(_launcher, "seed_max_count", 3)
+        dmg_min  = getattr(_launcher, "seed_min_dmg", 1)
+        dmg_max  = getattr(_launcher, "seed_max_dmg", 2)
+
+        num_seeds = random.randint(seed_min, seed_max)
+        total_seed_dmg = 0
+
+        print(f"\n   🎃💥 SEED LAUNCHER FIRES!")
+        for i in range(num_seeds):
+            s_dmg = random.randint(dmg_min, dmg_max)
+            total_seed_dmg += s_dmg
+            print(f"      💥 Seed {i + 1} explodes for {s_dmg} true damage!")
+
+        enemy.hp = max(0, enemy.hp - total_seed_dmg)
+        print(f"      🎃 {num_seeds} seed{'s' if num_seeds != 1 else ''} hit! "
+              f"{total_seed_dmg} true damage "
+              f"(Enemy HP: {enemy.hp}/{enemy.max_hp})")
+        log(f"  [SPECIAL] Seed Launcher — {total_seed_dmg} true damage ({num_seeds} seeds)")
+
+        # --- Off-hand follow-up (dual wield combo) ---
+        # If the other hand has a weapon, swing it after the seed cascade.
+        off_hand_dmg = 0
+        other_slot = "off_hand" if _launcher_slot == "main_hand" else "main_hand"
+        other_weapon = warrior.equipment.get(other_slot)
+        if other_weapon and getattr(other_weapon, "slot", None) == "weapon" and enemy.is_alive():
+            dw_rank = warrior.skill_ranks.get("dual_wielder", 0)
+            off_min, off_max = other_weapon.atk_min, other_weapon.atk_max
+            off_roll = random.randint(off_min, off_max) if off_max >= off_min else off_min
+
+            # Untrained dual wielder penalty
+            if dw_rank == 0:
+                off_roll = off_roll // 2
+
+            # Dual wielder ATK% bonus (applied to off-hand only since seeds are separate)
+            pct = {2: 0.10, 3: 0.15, 4: 0.20, 5: 0.25}.get(dw_rank, 0.0)
+            if pct:
+                off_roll = math.ceil(off_roll * (1 + pct))
+
+            off_roll = max(0, off_roll)
+            blocked = max(0, min(off_roll, getattr(enemy, "defence", 0)))
+            off_hand_dmg = max(0, off_roll - blocked)
+
+            enemy.hp = max(0, enemy.hp - off_hand_dmg)
+            off_name = getattr(other_weapon, "name", "Off-hand")
+            print(f"      ⚔️ {off_name} follow-up: {off_hand_dmg} damage! "
+                  f"(Roll {off_roll}, Blocked {blocked}) "
+                  f"(Enemy HP: {enemy.hp}/{enemy.max_hp})")
+            log(f"  [DUAL WIELD] {off_name} — {off_hand_dmg} damage")
+
+            # Fire off-hand weapon procs (bleed, blind, etc.)
+            if off_hand_dmg > 0:
+                _fire_weapon_native_procs(warrior, other_weapon, enemy, off_hand_dmg)
+
+        total_combined = total_seed_dmg + off_hand_dmg
+        return {
+            "actual":      total_combined,
+            "roll":        total_combined,
+            "blocked":     0,
+            "bonus_parts": "",
+            "elem_tag":    "",
+        }
+
     # 1) Roll — Session 19: dual-wielding now rolls main/off independently
     # and sums them; falls back to the normal single roll otherwise.
     roll = warrior_dual_wield_attack_roll(warrior)
@@ -3756,10 +4344,10 @@ def player_basic_attack(warrior, enemy, multiplier=1.0, use_accessory=False):
 
     actual = enemy.apply_defence(total, attacker=warrior)
 
-    # Patronus shield damage reduction — 30% while shield is equipped
-    if getattr(enemy, "shield_equipped", False):
-        reduction = round(actual * 0.30)
-        actual = max(1, actual - reduction)
+    # v0.8: Patronus shield damage reduction REMOVED — the passive 30% sponge
+    # was making fights drag without adding strategic depth. Replaced by the
+    # Smite meter system: shield still grants +6 DEF/+6 HP, but the threat
+    # comes from Smite charging, not damage absorption.
 
     enemy.hp = max(0, enemy.hp - actual)
 
@@ -3875,7 +4463,7 @@ def player_basic_attack(warrior, enemy, multiplier=1.0, use_accessory=False):
 
     # 5b) Weapon proc effects — paralyze (Goblin Shortbow)
     weapon = warrior.get_weapon()   # v0.6.16
-    if weapon and actual > 0 and enemy.is_alive():
+    if not use_accessory and weapon and actual > 0 and enemy.is_alive():
         paralyze_chance    = getattr(weapon, "paralyze_chance", 0.0)
         paralyze_turns     = getattr(weapon, "paralyze_turns", 0)
         if paralyze_chance > 0 and not getattr(enemy, "skip_turns", 0) > 0:
@@ -4679,8 +5267,8 @@ def chimera_fight(warrior):
 
     result = battle(warrior, chimera)
 
-    # Always restore stats degraded by Primordial Surge
-    _restore_primordial_stats(warrior)
+    # Always restore stats degraded by Chaos Breath
+    _restore_chaos_breath_stats(warrior)
 
     # Restore Chimera oppressive presence debuff if it was applied
     if hasattr(warrior, "chimera_presence_min_atk"):
@@ -4792,6 +5380,11 @@ def chimera_fight(warrior):
         ))
         print()
         award_title_with_buff(warrior, "guardian")
+
+        # v0.8.06: bestiary recording (was missing for boss kills)
+        from bestiary import record_monster, check_bestiary_completion
+        record_monster(chimera)
+        check_bestiary_completion(warrior)
 
         # v0.6.08: record final-boss kill for per-fight score system
         # Note: Chimera victory awards NO gold — defying the Beast Gods means
@@ -5084,6 +5677,11 @@ def patronus_fight(warrior):
     finally:
         # Always restore DEF reduced by Patronus Defence Break — even on crash/exception
         _restore_patronus_def(warrior)
+        # Always restore DEF stripped by Patronus Smite
+        if getattr(patronus, "smite_strip_active", False):
+            warrior.defence += patronus.smite_def_stripped
+            patronus.smite_strip_active = False
+            patronus.smite_def_stripped = 0
 
     cycles = getattr(patronus, "combat_cycles", 0)
     # v0.7.20 (Nathan's call): gate the intervention on ROUNDS SURVIVED, not
@@ -5231,6 +5829,11 @@ def patronus_fight(warrior):
         # v0.6.08: Patronus victory gold reward — Beast Gods favour the evil path
         award_gold(warrior, 100)
         print(f"\n🪙 The Beast Gods leave +100 gold at your feet. Total: {warrior.gold} gold.")
+
+        # v0.8.06: bestiary recording (was missing for boss kills)
+        from bestiary import record_monster, check_bestiary_completion
+        record_monster(patronus)
+        check_bestiary_completion(warrior)
 
         # v0.6.08: record final-boss kill for per-fight score system
         # `cycles` is the boss-fight equivalent of turn_count
@@ -5410,10 +6013,10 @@ def battle(warrior, enemy, skip_rest=False, round_num=0):
         return result
 
     except RestartException:
-        # Whatever your current behavior is (back to intro / debug menu),
-        # keep it here so battle_inner stays pure.
-        intro_story(GAME_WARRIOR)  # or whatever you currently do
-        return False
+        # v0.8.01: re-raise so intro_story()'s handler creates a fresh
+        # warrior and restarts cleanly.  Previously called intro_story()
+        # directly with stale GAME_WARRIOR, causing chained exceptions.
+        raise
 
     except QuickCombatException:
         # Dev shortcut ('!c' / '!combat') fallback while already in battle():
@@ -5733,6 +6336,18 @@ def battle_inner(warrior, enemy, skip_rest=False, round_num=0):
                         log_dot(warrior.name, dot_total, is_player_target=True)
                         for _fade in dot_fades:
                             print(_fade)
+
+                        # Lollipop Lick — Trickster heals from bleed damage
+                        pending_heal = getattr(warrior, "_trickster_heal_pending", 0)
+                        if pending_heal > 0 and enemy.is_alive():
+                            overheal_cap = getattr(enemy, "max_overheal", int(enemy.max_hp * 1.5))
+                            actual_heal = min(pending_heal, overheal_cap - enemy.hp)
+                            if actual_heal > 0:
+                                enemy.hp += actual_heal
+                                oh_tag = " (overheal!)" if enemy.hp > enemy.max_hp else ""
+                                print(f"      🍭 The Trickster licks its bloody lollipop! +{actual_heal} HP{oh_tag}!")
+                                log(f"  [HEAL] Trickster Lollipop Lick — +{actual_heal} HP (from bleed)")
+                            warrior._trickster_heal_pending = 0
                     if not warrior.is_alive():
                         print("You have succumbed to your wounds...")
                         log(f"  [DEATH] {warrior.name} killed by DoT (poison/burn/acid) on turn {turn_count}.")
@@ -5774,6 +6389,28 @@ def battle_inner(warrior, enemy, skip_rest=False, round_num=0):
                     gained = warrior.hp - before
                     if gained > 0:
                         print(wrap(f"🩹 Combat Medic: You recover {gained} HP."))
+
+                # ==========================
+                # 5b) SUGAR RUSH TICK (v0.8.04)
+                # ==========================
+                from collectibles import tick_sugar_rush
+                tick_sugar_rush(warrior)
+
+                # ==========================
+                # 5c) NOB'S SECRET SAUCE TICK (v0.8.05)
+                # ==========================
+                if getattr(warrior, "nobs_sauce_turns", 0) > 0:
+                    warrior.nobs_sauce_turns -= 1
+                    if warrior.nobs_sauce_turns <= 0:
+                        # Remove buffs
+                        warrior.min_atk -= getattr(warrior, "nobs_sauce_min_boost", 0)
+                        warrior.max_atk -= getattr(warrior, "nobs_sauce_atk_boost", 0)
+                        warrior.defence -= 1
+                        warrior.nobs_sauce_atk_boost = 0
+                        warrior.nobs_sauce_min_boost = 0
+                        print("🧪 Nob's Secret Sauce wears off.")
+                    else:
+                        print(f"🧪 Nob's Secret Sauce: {warrior.nobs_sauce_turns} turn(s) remaining.")
 
                 # ==========================
                 # 6) CHECK BERSERK TRIGGER
@@ -6028,12 +6665,61 @@ def battle_inner(warrior, enemy, skip_rest=False, round_num=0):
                             if getattr(enemy, "defence", 0) > 0:
                                 enemy.defence = max(0, enemy.defence - 1)
                                 print(wrap(f"🪖 Armor Piercer: {enemy.display_name}'s defence reduced to {enemy.defence}!"))
+                    # Speed potion double attack (v0.8.05)
+                    if getattr(warrior, "speed_potion_active", False) and enemy.hp > 0:
+                        warrior.speed_potion_active = False
+                        space()
+                        print("💨 Speed surge! You strike again!")
+                        space()
+                        _atk2 = player_basic_attack(warrior, enemy, multiplier=reduction, use_accessory=use_acc)
+                        if _atk2:
+                            log_attack(warrior.name, enemy.display_name, _atk2["roll"], _atk2["actual"], _atk2["blocked"],
+                                       bonus_parts=_atk2.get("bonus_parts"), effect_tag=_atk2.get("elem_tag", ""), is_player=True, is_special=False)
+                            if "armor_piercer" in getattr(warrior, "titles", set()):
+                                if getattr(enemy, "defence", 0) > 0:
+                                    enemy.defence = max(0, enemy.defence - 1)
+                                    print(wrap(f"🪖 Armor Piercer: {enemy.display_name}'s defence reduced to {enemy.defence}!"))
+                        log(f"  [SPEED POTION] second attack — {enemy.display_name} HP: {enemy.hp}/{enemy.max_hp}")
                     log(f"  [RESULT] {enemy.display_name} HP: {enemy.hp}/{enemy.max_hp}")
                     turn_spent = True
 
                 elif choice == "2" and has_weapon and has_accessory:
                     # Both equipped → choice 2 is always the accessory attack
-                    reduction = 1.0
+                    # ── VINE TOTEM ENTANGLE (v0.8.09) ──
+                    _acc = warrior.equipment.get("accessory")
+                    if _acc and getattr(_acc, "vine_charges", 0) > 0 and not getattr(enemy, "entangled", False):
+                        _acc.vine_charges -= 1
+                        print(f"\n   🎃 You squeeze the {_acc.name}!")
+                        apply_entangle(enemy, _acc.vine_dc, _acc.vine_dmg, _acc.vine_max_turns)
+                        print(f"       ({_acc.vine_charges}/{_acc.vine_max_charges} charges remaining)")
+                        log(f"  [PLAYER] Used Vine Totem — {_acc.vine_charges}/{_acc.vine_max_charges} charges left")
+                        turn_spent = True
+                        continue
+
+                    elif _acc and getattr(_acc, "vine_charges", 0) > 0 and getattr(enemy, "entangled", False):
+                        print("\n   🌿 Your foe is already entangled!")
+                        print("       The totem pulses but holds its charge.")
+                        continue
+                    elif _acc and getattr(_acc, "vine_max_charges", 0) > 0 and _acc.vine_charges <= 0:
+                        print(f"\n   🎃 The {_acc.name} is spent — no charges remain.")
+                        print("       You swing it as a blunt weapon instead!")
+                        reduction = 1.0
+                        if warrior.is_blinded and getattr(warrior, "blind_type", "") == "goblin_dust":
+                            if warrior.blind_turns == 2:
+                                reduction = 0.50
+                                print("👁️ Vision blurry... (50% power)")
+                            elif warrior.blind_turns == 1:
+                                reduction = 0.75
+                                print("👁️ Vision clearing... (75% power)")
+                        log(f"  [PLAYER] chose Accessory Attack (Vine Totem empty)" + (f" (blind x{reduction})" if reduction < 1.0 else ""))
+                        _atk = player_basic_attack(warrior, enemy, multiplier=reduction, use_accessory=True)
+                        if _atk:
+                            log_attack(warrior.name, enemy.display_name, _atk["roll"], _atk["actual"], _atk["blocked"],
+                                       bonus_parts=_atk.get("bonus_parts"), effect_tag=_atk.get("elem_tag", ""), is_player=True, is_special=False)
+                        turn_spent = True
+                    else:
+                        # Normal accessory attack (non-vine-totem accessory)
+                        reduction = 1.0
                     if warrior.is_blinded and getattr(warrior, "blind_type", "") == "goblin_dust":
                         if warrior.blind_turns == 2:
                             reduction = 0.50
@@ -6051,6 +6737,21 @@ def battle_inner(warrior, enemy, skip_rest=False, round_num=0):
                             if getattr(enemy, "defence", 0) > 0:
                                 enemy.defence = max(0, enemy.defence - 1)
                                 print(wrap(f"🪖 Armor Piercer: {enemy.display_name}'s defence reduced to {enemy.defence}!"))
+                    # Speed potion double attack (v0.8.05)
+                    if getattr(warrior, "speed_potion_active", False) and enemy.hp > 0:
+                        warrior.speed_potion_active = False
+                        space()
+                        print("💨 Speed surge! You strike again!")
+                        space()
+                        _atk2 = player_basic_attack(warrior, enemy, multiplier=reduction, use_accessory=True)
+                        if _atk2:
+                            log_attack(warrior.name, enemy.display_name, _atk2["roll"], _atk2["actual"], _atk2["blocked"],
+                                       bonus_parts=_atk2.get("bonus_parts"), effect_tag=_atk2.get("elem_tag", ""), is_player=True, is_special=False)
+                            if "armor_piercer" in getattr(warrior, "titles", set()):
+                                if getattr(enemy, "defence", 0) > 0:
+                                    enemy.defence = max(0, enemy.defence - 1)
+                                    print(wrap(f"🪖 Armor Piercer: {enemy.display_name}'s defence reduced to {enemy.defence}!"))
+                        log(f"  [SPEED POTION] second attack — {enemy.display_name} HP: {enemy.hp}/{enemy.max_hp}")
                     log(f"  [RESULT] {enemy.display_name} HP: {enemy.hp}/{enemy.max_hp}")
                     turn_spent = True
 
@@ -6133,6 +6834,10 @@ def battle_inner(warrior, enemy, skip_rest=False, round_num=0):
                             enemy.defence        = max(0, enemy.defence - Patronus.SHIELD_DEF_BONUS)
                             enemy.shield_equipped = False
 
+                        # Reset Smite meter — revival resets divine power
+                        enemy.smite_meter = 0
+                        enemy.smite_overloading = False
+
                         print("\n" + "=" * 50)
                         print("   ⚡ DEATH DEFIER — ANCIENT BLOOD REFUSES")
                         print("=" * 50)
@@ -6207,6 +6912,38 @@ def battle_inner(warrior, enemy, skip_rest=False, round_num=0):
                         loot = make_loot(enemy.name, monster_level=getattr(enemy, "level", 1), round_num=round_num)
                         if loot:
                             offer_loot(warrior, loot)
+
+                    # 1a. HALLOWEEN DROP — seasonal gear from Halloween monsters
+                    # Fires during October, OR any time for a Halloween monster
+                    # (so debug-spawned Halloween fights always roll for drops)
+                    try:
+                        from collectibles import roll_halloween_drop, is_october, HALLOWEEN_DROPS
+                        if is_october() or enemy.name in HALLOWEEN_DROPS:
+                            halloween_loot = roll_halloween_drop(warrior, enemy.name)
+                            if halloween_loot:
+                                offer_loot(warrior, halloween_loot)
+                    except ImportError:
+                        pass
+
+                    # 1a-ii. WEREWOLF DEFEAT SCENE — after drop, before XP
+                    if enemy.name == "Female Werewolf":
+                        try:
+                            from story import werewolf_defeat_scene
+                            werewolf_defeat_scene(warrior)
+                        except ImportError:
+                            pass
+                    # 1a-iii. HALLOWEEN CANDY — award candy for seasonal kills
+                    try:
+                        from collectibles import award_halloween_candy
+                        candy_earned = award_halloween_candy(warrior, enemy)
+                        if candy_earned > 0:
+                            print(f"\n  🍬 +{candy_earned} candy! Total: {warrior.halloween_candy} candy.")
+                    except ImportError:
+                        pass
+                    # 1b. BESTIARY — record defeated monster (v0.8.04)
+                    from bestiary import record_monster, check_bestiary_completion
+                    record_monster(enemy)
+                    check_bestiary_completion(warrior)
 
                     # 2. XP — skip for Fallen Warrior, Chimera, Patronus
                     if enemy.name not in ("Fallen Warrior", "Young Chimera", "Patronus"):
@@ -6330,8 +7067,38 @@ def battle_inner(warrior, enemy, skip_rest=False, round_num=0):
                         if loot:
                             offer_loot(warrior, loot)
 
+                        # Halloween seasonal drop — DoT kill path
+                        try:
+                            from collectibles import roll_halloween_drop, is_october, HALLOWEEN_DROPS
+                            if is_october() or enemy.name in HALLOWEEN_DROPS:
+                                halloween_loot = roll_halloween_drop(warrior, enemy.name)
+                                if halloween_loot:
+                                    offer_loot(warrior, halloween_loot)
+                        except ImportError:
+                            pass
+                        
+                        # Werewolf defeat scene — DoT kill path
+                        if enemy.name == "Female Werewolf":
+                            try:
+                                from story import werewolf_defeat_scene
+                                werewolf_defeat_scene(warrior)
+                            except ImportError:
+                                pass
+                        # Halloween candy — DoT kill path
+                        try:
+                            from collectibles import award_halloween_candy
+                            candy_earned = award_halloween_candy(warrior, enemy)
+                            if candy_earned > 0:
+                                print(f"\n  🍬 +{candy_earned} candy! Total: {warrior.halloween_candy} candy.")
+                        except ImportError:
+                            pass
                         if enemy.name not in ("Young Chimera", "Patronus"):
                             animate_xp_results(warrior, _xp_with_difficulty_mult(enemy.xp), spend_points_fn=spend_points_menu)
+
+                        # v0.8.06: bestiary recording (was missing for DoT kills)
+                        from bestiary import record_monster, check_bestiary_completion
+                        record_monster(enemy)
+                        check_bestiary_completion(warrior)
 
                         log(f"  [RESULT] VICTORY — {warrior.name} defeated {enemy.display_name} via DoT.")
                         log_battle_summary(warrior.name, enemy.display_name, "VICTORY", turn_count)
@@ -6413,7 +7180,8 @@ def battle_inner(warrior, enemy, skip_rest=False, round_num=0):
                             _sdmg = enemy.special_move(enemy, warrior)
                             _stone_absorb_charge(warrior)
                             if _sdmg:
-                                log_attack(enemy.display_name, warrior.name, _sdmg, _sdmg, 0,
+                                _sdmg_val = _sdmg["damage"] if isinstance(_sdmg, dict) else _sdmg
+                                log_attack(enemy.display_name, warrior.name, _sdmg_val, _sdmg_val, 0,
                                            effect_tag=f"[{_smove_name}]", is_player=False)
                         else:
                             log(f"  [ENEMY] {enemy.display_name} attacks (blind x{reduction})")
@@ -6467,7 +7235,8 @@ def battle_inner(warrior, enemy, skip_rest=False, round_num=0):
                             _sdmg = enemy.special_move(enemy, warrior)
                             _stone_absorb_charge(warrior)
                             if _sdmg:
-                                log_attack(enemy.display_name, warrior.name, _sdmg, _sdmg, 0,
+                                _sdmg_val = _sdmg["damage"] if isinstance(_sdmg, dict) else _sdmg
+                                log_attack(enemy.display_name, warrior.name, _sdmg_val, _sdmg_val, 0,
                                            effect_tag=f"[{_smove_name}]", is_player=False)
                             # v0.6.19: Death Defier check for the chained special.
                             # Basic attack above goes through enemy_attack (has its own check),
@@ -6496,18 +7265,18 @@ def battle_inner(warrior, enemy, skip_rest=False, round_num=0):
                                 not _dd_used_before_fury
                                 and getattr(warrior, "death_defier_used", False)
                             )
-                            # Then Primordial Surge as true damage (fury_triggered=True suppresses charge display)
+                            # Then Chaos Breath as true damage (fury_triggered=True suppresses charge display)
                             # Capture actual damage so the combat log reports it correctly
                             # (was previously hardcoded to 0 — bug fixed v0.6.11)
                             _surge_fired = False
                             if warrior.is_alive() and not _dd_just_fired_on_basic:
                                 _surge_fired = True
-                                from monsters import primordial_surge as _ps
+                                from monsters import chaos_breath as _ps
                                 _surge_dmg = _ps(enemy, warrior, fury_triggered=True)
                                 _surge_dmg = _surge_dmg if _surge_dmg is not None else 0
                                 log_attack(enemy.display_name, warrior.name,
                                            _surge_dmg, _surge_dmg, 0,
-                                           effect_tag="[Primordial Surge — Fury, true dmg]",
+                                           effect_tag="[Chaos Breath — Fury, true dmg]",
                                            is_player=False)
                                 # If Surge killed the player, fire Death Defier
                                 if warrior.hp <= 0:
@@ -6520,7 +7289,7 @@ def battle_inner(warrior, enemy, skip_rest=False, round_num=0):
                                 log(f"  [ENEMY] Young Chimera — Fury Overload: Surge withheld, Death Defier just fired on the basic attack.")
                             # Log overall fury outcome — only mention surge if it actually fired
                             if _surge_fired:
-                                log(f"  [ENEMY] Young Chimera — Fury Overload: basic ATK + Primordial Surge")
+                                log(f"  [ENEMY] Young Chimera — Fury Overload: basic ATK + Chaos Breath")
                             elif not _dd_just_fired_on_basic:
                                 log(f"  [ENEMY] Young Chimera — Fury Overload: basic ATK landed killing blow (Surge skipped)")
                             # Reset fury
@@ -6544,7 +7313,8 @@ def battle_inner(warrior, enemy, skip_rest=False, round_num=0):
                             _smove_name = getattr(enemy, "chimera_last_move_name", "Special Move")
                             log(f"  [ENEMY] Young Chimera uses {_smove_name}")
                             if _sdmg:
-                                log_attack(enemy.display_name, warrior.name, _sdmg, _sdmg, 0,
+                                _sdmg_val = _sdmg["damage"] if isinstance(_sdmg, dict) else _sdmg
+                                log_attack(enemy.display_name, warrior.name, _sdmg_val, _sdmg_val, 0,
                                            effect_tag=f"[{_smove_name}]", is_player=False)
                             enemy.chimera_used_special = True
                             # v0.6.19: Death Defier check for Chimera's main special path.
@@ -6561,6 +7331,15 @@ def battle_inner(warrior, enemy, skip_rest=False, round_num=0):
                                 _eroll = _eatk + max(0, getattr(warrior, "defence", 0))
                                 log_attack(enemy.display_name, warrior.name, _eroll, _eatk, _eroll - _eatk, is_player=False)
                     elif enemy.name == "Patronus":
+                        # Restore DEF from previous Smite if active
+                        if getattr(enemy, "smite_strip_active", False):
+                            restored = enemy.smite_def_stripped
+                            warrior.defence += restored
+                            enemy.smite_strip_active = False
+                            enemy.smite_def_stripped = 0
+                            if restored > 0:
+                                print(wrap(f"  🛡️ Your defence returns. (+{restored} DEF)"))
+
                         # Tick buffs/debuffs each enemy turn
                         _tick_patronus_war_cry(enemy)
                         _tick_patronus_def_break(warrior)
@@ -6572,56 +7351,66 @@ def battle_inner(warrior, enemy, skip_rest=False, round_num=0):
                         # Passive AP regen — only used for Power Charge (costs 2 AP)
                         enemy.ap = min(enemy.max_ap, enemy.ap + 1)
 
-                        action = patronus_ai(enemy, warrior, turn_count)
-
-                        if action == "war_cry":
-                            log(f"  [ENEMY] Patronus uses War Cry")
-                            patronus_war_cry(enemy)
-                            COMBAT_LOG.append(f"  [EFFECT] Patronus War Cry — ATK buffed for next turns")
-                            _stone_absorb_charge(warrior)
-                        elif action == "double_strike":
-                            log(f"  [ENEMY] Patronus uses Double Strike")
-                            _sdmg = patronus_double_strike(enemy, warrior)
+                        # --- SMITE OVERLOAD CHECK — fires before normal AI ---
+                        if getattr(enemy, "smite_overloading", False):
+                            log(f"  [ENEMY] Patronus unleashes DIVINE SMITE!")
+                            _sdmg = patronus_smite(enemy, warrior)
                             if _sdmg:
                                 log_attack("Patronus", warrior.name, _sdmg, _sdmg, 0,
-                                           effect_tag="[Double Strike — 2 hits]", is_player=False)
-                            _stone_absorb_charge(warrior)
-                        elif action == "power_charge":
-                            log(f"  [ENEMY] Patronus uses Power Charge")
-                            _sdmg = patronus_power_charge(enemy, warrior)
-                            if _sdmg:
-                                log_attack("Patronus", warrior.name, _sdmg, _sdmg, 0,
-                                           effect_tag="[Power Charge — ATK buffed]", is_player=False)
-                            _stone_absorb_charge(warrior)
-                        elif action == "first_aid":
-                            log(f"  [ENEMY] Patronus uses First Aid")
-                            patronus_first_aid(enemy)
-                            COMBAT_LOG.append(f"  [EFFECT] Patronus First Aid — HP restored")
-                            _stone_absorb_charge(warrior)
-                        elif action == "defence_break":
-                            log(f"  [ENEMY] Patronus uses Defence Break")
-                            _def_red = patronus_defence_break(enemy, warrior)
-                            COMBAT_LOG.append(f"  [EFFECT] Patronus Defence Break — your DEF reduced by {_def_red}")
+                                           effect_tag="[Divine Smite — DEF ignored]", is_player=False)
                             _stone_absorb_charge(warrior)
                         else:
-                            log(f"  [ENEMY] Patronus attacks")
-                            _eatk = enemy_attack(enemy, warrior, resolve_special=False)
-                            if _eatk:
-                                _eroll = _eatk + max(0, getattr(warrior, "defence", 0))
-                                log_attack(enemy.display_name, warrior.name, _eroll, _eatk, _eroll - _eatk, is_player=False)
+                            action = patronus_ai(enemy, warrior, turn_count)
+
+                            if action == "war_cry":
+                                log(f"  [ENEMY] Patronus uses War Cry")
+                                patronus_war_cry(enemy)
+                                COMBAT_LOG.append(f"  [EFFECT] Patronus War Cry — ATK buffed for next turns")
+                                _stone_absorb_charge(warrior)
+                            elif action == "double_strike":
+                                log(f"  [ENEMY] Patronus uses Double Strike")
+                                _sdmg = patronus_double_strike(enemy, warrior)
+                                if _sdmg:
+                                    log_attack("Patronus", warrior.name, _sdmg, _sdmg, 0,
+                                               effect_tag="[Double Strike — 2 hits]", is_player=False)
+                                _stone_absorb_charge(warrior)
+                            elif action == "power_charge":
+                                log(f"  [ENEMY] Patronus uses Power Charge")
+                                _sdmg = patronus_power_charge(enemy, warrior)
+                                if _sdmg:
+                                    log_attack("Patronus", warrior.name, _sdmg, _sdmg, 0,
+                                               effect_tag="[Power Charge — ATK buffed]", is_player=False)
+                                _stone_absorb_charge(warrior)
+                            elif action == "first_aid":
+                                log(f"  [ENEMY] Patronus uses First Aid")
+                                patronus_first_aid(enemy)
+                                COMBAT_LOG.append(f"  [EFFECT] Patronus First Aid — HP restored")
+                                _stone_absorb_charge(warrior)
+                            elif action == "defence_break":
+                                log(f"  [ENEMY] Patronus uses Defence Break")
+                                _def_red = patronus_defence_break(enemy, warrior)
+                                COMBAT_LOG.append(f"  [EFFECT] Patronus Defence Break — your DEF reduced by {_def_red}")
+                                _stone_absorb_charge(warrior)
+                            else:
+                                log(f"  [ENEMY] Patronus attacks")
+                                _eatk = enemy_attack(enemy, warrior, resolve_special=False)
+                                if _eatk:
+                                    _eroll = _eatk + max(0, getattr(warrior, "defence", 0))
+                                    log_attack(enemy.display_name, warrior.name, _eroll, _eatk, _eroll - _eatk, is_player=False)
                         # v0.6.19: Death Defier check for Patronus damage-dealing actions
-                        # (double_strike, power_charge). The basic attack branch already
+                        # (double_strike, power_charge, smite). The basic attack branch already
                         # routes through enemy_attack which has its own check, but the
                         # special actions bypass it — same class of bug as Fallen Warrior.
                         if warrior.hp <= 0:
-                            try_death_defier(warrior, f"{enemy.name} {action}", enemy=enemy)
+                            try_death_defier(warrior, f"{enemy.name} smite" if getattr(enemy, "smite_overloading", False) else f"{enemy.name} {action}", enemy=enemy)
                     elif should_special:
                         _smove_name = SPECIAL_MOVE_NAMES.get(getattr(enemy.special_move, "__name__", ""), "Special Move")
                         log(f"  [ENEMY] {enemy.display_name} uses {_smove_name}")
                         _sdmg = enemy.special_move(enemy, warrior)
                         _stone_absorb_charge(warrior)
                         if _sdmg:
-                            log_attack(enemy.display_name, warrior.name, _sdmg, _sdmg, 0,
+                            _sdmg_val = _sdmg["damage"] if isinstance(_sdmg, dict) else _sdmg
+                            log_attack(enemy.display_name, warrior.name, _sdmg_val, _sdmg_val, 0,
                                        effect_tag=f"[{_smove_name}]", is_player=False)
                         # v0.6.19: Death Defier check for special-move dispatch path.
                         # The enemy_attack() function has its own check for the basic-attack
@@ -6696,6 +7485,25 @@ def battle_inner(warrior, enemy, skip_rest=False, round_num=0):
                                 f"It has absorbed your power — brace yourself!"
                             ))
 
+                    # Patronus passive smite build — +10% per full round of combat,
+                    # stacked on top of any ranked-skill bonuses the player
+                    # contributed during their turn.
+                    if enemy.name == "Patronus" and not getattr(enemy, "smite_overloading", False):
+                        gain = 10
+                        enemy.smite_meter = min(100, enemy.smite_meter + gain)
+                        bar_filled = int(enemy.smite_meter / 10)
+                        bar = "█" * bar_filled + "░" * (10 - bar_filled)
+                        print(wrap(
+                            f"🔥 Patronus Smite: [{bar}] {enemy.smite_meter}%  "
+                            f"(+{gain} from a full round of combat)"
+                        ))
+                        if enemy.smite_meter >= 100 and not enemy.smite_overloading:
+                            enemy.smite_overloading = True
+                            print(wrap(
+                                f"\n⚠️ PATRONUS'S EYES BLAZE WITH DIVINE FURY! "
+                                f"He is channeling Smite — brace yourself!"
+                            ))
+
                 warrior_turn = not warrior_turn
                 player_turn_started = False
 
@@ -6714,6 +7522,18 @@ def battle_inner(warrior, enemy, skip_rest=False, round_num=0):
             # return "win" so the arena loop breaks cleanly
             if enemy.name in ("Patronus", "Young Chimera"):
                 return "win"
+            # Award candy (Halloween)
+            try:
+                from collectibles import award_halloween_candy
+                candy_earned = award_halloween_candy(warrior, enemy)
+                if candy_earned:
+                    print(f"\n  🍬 +{candy_earned} candy! Total: {warrior.halloween_candy} candy.")
+            except ImportError:
+                pass
+            input("\nPress Enter to continue.")
+            if not skip_rest:
+                rest_phase(warrior)
+            reset_between_rounds(warrior)
             # Award gold on safety fallback victory too
             _gold_result = calculate_gold_reward(enemy, turn_count, warrior)
             display_gold_earned(_gold_result)

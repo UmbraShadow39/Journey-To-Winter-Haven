@@ -126,6 +126,8 @@ POTION_PRICES = {
     "skill_rank_up": 50,    # rank up one learned skill by 1 (bypasses SP cost)
     "stat_point":    50,    # +2 stat points (player assigns immediately)
     "skill_point":   35,    # +2 skill points (player spends immediately)
+    "arcane_ward":   40,    # +1 permanent elemental resistance
+    "fort_draught":  40,    # +1 permanent defence
 }
 
 POTION_STOCK_COUNT = {
@@ -141,6 +143,8 @@ POTION_STOCK_COUNT = {
     "skill_rank_up": 1,
     "stat_point":    1,
     "skill_point":   1,
+    "arcane_ward":   1,
+    "fort_draught":  1,
 }
 
 SELL_BACK_RATE = 0.5
@@ -419,6 +423,7 @@ def _build_factories():
                 name             = "Rusted Sword",
                 slot             = "weapon",
                 rarity           = r,
+                tier             = 1,
                 atk_min          = RUSTED_SWORD_STATS[r]["atk_min"],
                 atk_max          = RUSTED_SWORD_STATS[r]["atk_max"],
                 defence          = RUSTED_SWORD_STATS[r]["defence"],
@@ -430,6 +435,7 @@ def _build_factories():
                 name        = "Imp Trident",
                 slot        = "weapon",
                 rarity      = r,
+                tier        = 1,
                 atk_min     = IMP_TRIDENT_STATS[r]["atk_min"],
                 atk_max     = IMP_TRIDENT_STATS[r]["atk_max"],
                 proc_chance = IMP_TRIDENT_STATS[r]["proc_chance"],
@@ -439,6 +445,7 @@ def _build_factories():
                 name         = "Goblin Dagger",
                 slot         = "weapon",
                 rarity       = r,
+                tier         = 1,
                 atk_min      = GOBLIN_DAGGER_STATS[r]["atk_min"],
                 atk_max      = GOBLIN_DAGGER_STATS[r]["atk_max"],
                 blind_chance = GOBLIN_DAGGER_STATS[r]["blind_chance"],
@@ -447,6 +454,7 @@ def _build_factories():
                 name            = "Goblin Shortbow",
                 slot            = "weapon",
                 rarity          = r,
+                tier            = 2,
                 atk_min         = GOBLIN_SHORTBOW_STATS[r]["atk_min"],
                 atk_max         = GOBLIN_SHORTBOW_STATS[r]["atk_max"],
                 paralyze_chance = GOBLIN_SHORTBOW_STATS[r]["paralyze_chance"],
@@ -456,6 +464,7 @@ def _build_factories():
                 name          = "Goblin War Blade",
                 slot          = "weapon",
                 rarity        = r,
+                tier          = 3,
                 atk_min       = GOBLIN_WAR_BLADE_STATS[r]["atk_min"],
                 atk_max       = GOBLIN_WAR_BLADE_STATS[r]["atk_max"],
                 bleed_turns   = GOBLIN_WAR_BLADE_STATS[r]["bleed_turns"],
@@ -525,6 +534,10 @@ def _potion_label(potion_key):
         "burn_cream":   "Burn Cream",
         "cure_all":     "Cure-All Tonic",
         "elixir":       "Elixir (50% HP + 50% AP)",
+        "arcane_ward":  "🔮 Arcane Ward (+1 Elemental Resistance)",
+        "fort_draught": "🛡️ Fortification Draught (+1 Defence)",
+        "silver_tonic": "🐺 Silver Tonic (Cure Lycanthropy)",
+        "monster_candy": "👹 Monster Candy (Fear — combat only)",
     }
     return labels.get(potion_key, potion_key.replace("_", " ").title())
 
@@ -792,7 +805,9 @@ def _show_category_picker(stock, warrior):
     print(f"  4) 🧪 Potions               ({potion_avail} available)")
     print()
     print(f"  S) Sell items from your bag")
+    print(f"  S) Sell items from your bag")
     print(f"  0) Leave the merchant")
+    
     print()
 
 
@@ -1174,8 +1189,48 @@ def _sell_back_menu(warrior):
 # ============================================================
 # MAIN SCENE
 # ============================================================
+def _candy_exchange(warrior):
+    """10 gold ↔ 1 candy exchange, available during Halloween."""
+    while True:
+        print()
+        print("=" * 52)
+        print(f"  🍬 Candy Exchange   |   Gold: {warrior.gold}g   Candy: {warrior.halloween_candy}")
+        print("=" * 52)
+        print()
+        print(_wrap("  'Got a sweet tooth, fighter? Ten gold buys one candy. "
+                     "Or I'll buy yours back — same rate.'"))
+        print()
+        print(f"  1) Buy candy   (10g → 1 candy)")
+        print(f"  2) Sell candy   (1 candy → 10g)")
+        print(f"  0) Back")
+        print()
+        choice = input("  > ").strip()
 
+        if choice == "0" or choice == "":
+            return
+
+        if choice == "1":
+            if warrior.gold < 10:
+                print("\n  'Not enough gold, friend.'")
+                input("  Press Enter...")
+                continue
+            warrior.gold -= 10
+            warrior.halloween_candy += 1
+            print(f"\n  🍬 +1 candy! Gold: {warrior.gold}g  Candy: {warrior.halloween_candy}")
+            input("  Press Enter...")
+
+        elif choice == "2":
+            if warrior.halloween_candy < 1:
+                print("\n  'You don't have any candy to sell.'")
+                input("  Press Enter...")
+                continue
+            warrior.halloween_candy -= 1
+            warrior.gold += 10
+            print(f"\n  🪙 +10 gold! Gold: {warrior.gold}g  Candy: {warrior.halloween_candy}")
+            input("  Press Enter...")
+    
 def merchant_scene(warrior, stock=None):
+    
     """
     Full merchant UI loop. Runs buy/sell/expand loops until the player exits.
 
@@ -1201,6 +1256,7 @@ def merchant_scene(warrior, stock=None):
     """
     _clear_screen()
 
+    
     if stock is None:
         # First visit — fresh stock and the full intro line
         print(_wrap(
@@ -1233,6 +1289,7 @@ def merchant_scene(warrior, stock=None):
         if raw == "s":
             _sell_back_menu(warrior)
             continue
+
 
         # Dispatch into the chosen category submenu. Each category submenu
         # has its own inner loop until the player picks 0 (back).

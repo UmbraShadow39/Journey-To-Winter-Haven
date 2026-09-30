@@ -46,6 +46,8 @@ SPECIAL_MOVE_NAMES = {
     "fallen_defence_warp":        "Defence Warp",
     "chimera_special_dispatcher": "Chimera Special",
     "primordial_surge":           "Primordial Surge",
+    "exploding_pumpkin_seeds":    "Exploding Pumpkin Seeds",
+    "lollipop_flurry":           "Lollipop Flurry",
 }
 
 DEFENCE_BREAK_STATS = {
@@ -405,8 +407,17 @@ class Equipment:
         rot_chance=0.0,
         rot_stacks=0,
         rot_hp_per_stack=0,
+        # ── Halloween candy-shop gear (v0.08) ──
+        magic_res=0,              # Pumpkin Head — flat elemental damage reduction
+        dread_aura_chance=0.0,    # Pumpkin Head — solo dread aura proc chance
+        vine_dc=0,                # Vine Totem — d20 DC to break free
+        vine_dmg=0,               # Vine Totem — damage per entangle tick
+        vine_max_turns=0,         # Vine Totem — how many turns entangle lasts
+        vine_max_charges=0,       # Vine Totem — max charges the totem holds
+        vine_charges=0,           # Vine Totem — current charges
     ):
         self.name             = name
+        self.base_name        = name   # preserved for socket rename/revert
         self.slot             = slot
         self.rarity           = rarity
         self.tier             = tier
@@ -463,6 +474,14 @@ class Equipment:
         self.rot_chance        = rot_chance
         self.rot_stacks        = rot_stacks
         self.rot_hp_per_stack  = rot_hp_per_stack
+        # Halloween candy-shop gear
+        self.magic_res          = magic_res
+        self.dread_aura_chance  = dread_aura_chance
+        self.vine_dc            = vine_dc
+        self.vine_dmg           = vine_dmg
+        self.vine_max_turns     = vine_max_turns
+        self.vine_max_charges   = vine_max_charges
+        self.vine_charges       = vine_charges
 
     # ---------- Socket system helpers (v0.6.16) ----------
 
@@ -602,6 +621,22 @@ class Equipment:
             lines.append("  (no bonus stats)")
         if self.stone_max_charges:
             lines.append(f"  🌀 Charges: {self.stone_charges}/{self.stone_max_charges}")
+        # Socket info with component tier
+        sockets = getattr(self, "sockets", None)
+        if sockets:
+            lines.append(divider)
+            lines.append("  Sockets:")
+            # Tier map: component rarity → tier number
+            _tier_map = {
+                "poor": 1, "normal": 2, "uncommon": 3,
+                "rare": 4, "epic": 5, "legendary": 6, "mythril": 7,
+            }
+            for i, sock in enumerate(sockets):
+                if sock is None:
+                    lines.append(f"    [{i+1}] Empty")
+                else:
+                    tier = _tier_map.get(getattr(sock, "rarity", "poor"), 1)
+                    lines.append(f"    [{i+1}] {sock.name} (Tier {tier})")
         lines.append(divider)
         return "\n".join(lines)
 

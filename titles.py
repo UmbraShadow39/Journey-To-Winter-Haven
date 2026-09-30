@@ -69,6 +69,12 @@ TITLE_DISPLAY = {
     # --- Gold-behavior titles (v0.7.18) ---
     "big_spender":          "Big Spender",
     "penny_pincher":        "Penny Pincher",
+
+    # --- Bestiary completion titles (v0.8.06) ---
+    "noob_bestiary_master":     "Noob Bestiary Master",
+    "warrior_bestiary_master":  "Warrior Bestiary Master",
+    "champion_bestiary_master": "Champion Bestiary Master",
+    "spirit_of_halloween":      "Spirit of Halloween",
 }
 
 

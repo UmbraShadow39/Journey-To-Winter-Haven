@@ -23,6 +23,12 @@ from combat import (
 from combat_log import view_combat_log
 from leaderboard import warn_debug_mode_score_impact
 from story import arena_quarters_interlude
+
+def _get_arena_battle():
+    """Lazy import to avoid circular dependency with main file."""
+    import sys
+    main = sys.modules.get("__main__")
+    return getattr(main, "arena_battle", None)
 from equipment import RARITY_ORDER, make_loot, equip_item, unequip_item
 from monsters import (
     MONSTER_TYPES, TIER4_BOSSES, weight_to_tier, apply_difficulty_scaling,
@@ -31,7 +37,9 @@ from monsters import (
     Imp, Fallen_Warrior, Wolf_Pup_Rider, Javelina, Goblin_Archer,
     Noob_Ghost, Dire_Wolf_Pup, Hydra_Hatchling, Young_Chimera,
     Flayed_One, Drowned_One, Goblin_Warrior, Patronus,
+    Giant_Diseased_Rat,
 )
+from collectibles import Giant_Animated_Jack_O_Lantern, The_Trickster, Female_Werewolf
 from hero import SKILL_DEFS, Warrior, compute_adrenaline_bonus, check_berserk_trigger
 from ui import refresh_special_state
 
@@ -42,7 +50,7 @@ def has_unspent_points(hero) -> bool:
 
 def get_tier_for_monster_class(cls):
     """Proxy — looks up tier from MONSTER_TYPES (debug UI only)."""
-    for c, w in MONSTER_TYPES:
+    for c, w, _excl in MONSTER_TYPES:
         if c is cls: return weight_to_tier(w)
     for c, _w in TIER4_BOSSES:
         if c is cls: return 4
@@ -153,15 +161,17 @@ def debug_menu(warrior, enemy=None):
         print("18) Title Grant Menu")
         print("19) Give Gold")            # v0.6.16
         print("20) Jump to Interlude")    # v0.6.16
+        print("21) Give Candy 🍬")        # v0.08 Halloween
+        print("22) Halloween Tournament 🎃")
         print("---------------------")
-        print("21) Exit Current Run")
-        print("22) Exit Debug Menu")
+        print("23) Exit Current Run")
+        print("Press Enter to exit Debug Menu")
         print("======================")
 
         choice = _real_input("> ").strip()
 
         if choice == "":
-            continue
+            return
 
         # --- 1) Berserk ---
         if choice == "1":
@@ -377,12 +387,66 @@ def debug_menu(warrior, enemy=None):
                 arena_quarters_interlude(warrior)
                 _real_input("\nReturned from interlude. Press Enter...")
 
-        # --- 21) Exit run ---
+        # --- 21) Give Candy (v0.08 Halloween) ---
         elif choice == "21":
+            clear_screen()
+            print("===== DEBUG: GIVE CANDY 🍬 =====")
+            print(f"Current candy: {getattr(warrior, 'halloween_candy', 0)}")
+            print()
+            print("1) +5 candy")
+            print("2) +10 candy")
+            print("3) +50 candy")
+            print("4) Custom amount")
+            print("0) Back")
+            gc = _real_input("> ").strip()
+            if gc == "1":
+                warrior.halloween_candy = getattr(warrior, 'halloween_candy', 0) + 5
+                print(f"\n✅ +5 candy. Total: {warrior.halloween_candy} 🍬")
+            elif gc == "2":
+                warrior.halloween_candy = getattr(warrior, 'halloween_candy', 0) + 10
+                print(f"\n✅ +10 candy. Total: {warrior.halloween_candy} 🍬")
+            elif gc == "3":
+                warrior.halloween_candy = getattr(warrior, 'halloween_candy', 0) + 50
+                print(f"\n✅ +50 candy. Total: {warrior.halloween_candy} 🍬")
+            elif gc == "4":
+                amt = _real_input("Amount: ").strip()
+                try:
+                    warrior.halloween_candy = getattr(warrior, 'halloween_candy', 0) + int(amt)
+                    print(f"\n✅ +{amt} candy. Total: {warrior.halloween_candy} 🍬")
+                except ValueError:
+                    print("\nInvalid amount.")
+            _real_input("\nPress Enter...")
+
+        # --- 22) Halloween Tournament 🎃 ---
+        elif choice == "22":
+            clear_screen()
+            print("===== DEBUG: HALLOWEEN TOURNAMENT 🎃 =====")
+            print()
+            print("Runs a Halloween-only arena:")
+            print("  Rounds 1-2: Jack O'Lantern")
+            print("  Round 3:    Trickster")
+            print("  Round 4:    Female Werewolf")
+            print("  Round 5:    Fallen Warrior (boss + moral choice)")
+            print()
+            confirm = _real_input("Start Halloween Tournament? (y/n): ").strip().lower()
+            if confirm == "y":
+                ab = _get_arena_battle()
+                if ab:
+                    warrior.halloween_tournament = True
+                    try:
+                        ab(warrior)
+                    finally:
+                        warrior.halloween_tournament = False
+                else:
+                    print("\n❌ Could not find arena_battle — run from main file.")
+                    _real_input("\nPress Enter...")
+
+        # --- 23) Exit current run ---
+        elif choice == "23":
             sys.exit(0)
 
-        # --- 22) Exit debug menu ---
-        elif choice == "22":
+        # --- Press Enter (or anything else) to exit debug ---
+        else:
             return
 
 
@@ -606,7 +670,36 @@ def _debug_loot_menu(warrior):
         ("28", "Oak Shield            (shield)    — merchant",         "DEBUG_OAK_SHIELD"),
         ("29", "Ironwood Shield       (shield)    — merchant",         "DEBUG_IRONWOOD_SHIELD"),
         ("30", "Ashen Shield          (shield)    — merchant",         "DEBUG_ASHEN_SHIELD"),
+        # v0.8 — Giant Diseased Rat drop (accessory — equipment stats TBD)
+        ("31", "Rat Fang              (accessory) — Giant Diseased Rat", "DEBUG_RAT_FANG"),
+        # v0.8 — Sharpened Tusk (crafter upgrade, accessory)
+        ("32", "Sharpened Tusk        (accessory) — crafted",           "DEBUG_SHARPENED_TUSK"),
+        # v0.8 — Merchant rings (finger slot)
+        ("33", "Stoneheart Pendant    (ring)      — merchant",          "DEBUG_STONEHEART"),
+        ("34", "Tiger Fang            (ring)      — merchant",          "DEBUG_TIGER_FANG"),
+        ("35", "Stoneskin Band        (ring)      — merchant",          "DEBUG_STONESKIN"),
+        ("36", "Spirit Crystal        (ring)      — merchant",          "DEBUG_SPIRIT_CRYSTAL"),
+        ("37", "Adrenaline Ring       (ring)      — merchant",          "DEBUG_ADRENALINE_RING"),
+        # v0.8 — Berserk Trinket (merchant)
+        ("38", "Berserk Trinket       (trinket)   — merchant",          "DEBUG_BERSERK_TRINKET"),
+        # v0.8 — Halloween loot
+        ("39", "Enchanted Seed Launcher (weapon)    — Jack O'Lantern", "DEBUG_SEED_LAUNCHER"),
+        ("40", "Sharpened Sucker        (weapon)    — Trickster",      "DEBUG_SHARPENED_SUCKER"),
+        ("41", "Werewolf Cloak          (cape)      — Female Werewolf", "DEBUG_WEREWOLF_CLOAK"),
+        ("42", "Pumpkin Helm            (helm)      — Candy Shop",       "DEBUG_PUMPKIN_HELM"),
+        ("43", "Pumpkin Vine Totem      (accessory) — Candy Shop",       "DEBUG_PUMPKIN_VINE_TOTEM"),
+        ("44", "Jack O'Lantern Head     (accessory) — Headless Horseman","DEBUG_JACK_HEAD"),
     ]
+
+    # Categorized view for display
+    LOOT_CATEGORIES = {
+        "⚔️  WEAPONS": [i for i in ALL_LOOT if any(x in i[1].lower() for x in ["(weapon)"])],
+        "🛡️  ARMOR & CAPES": [i for i in ALL_LOOT if any(x in i[1].lower() for x in ["(armor)", "(cape)", "(helm)", "(shield)"])],
+        "💍  ACCESSORIES & RINGS": [i for i in ALL_LOOT if any(x in i[1].lower() for x in ["(accessory)", "(ring)"])],
+        "🔮  TRINKETS & MATERIALS": [i for i in ALL_LOOT if any(x in i[1].lower() for x in ["(trinket)", "(material)"])],
+        "🎃  HALLOWEEN": [i for i in ALL_LOOT if any(x in i[1].lower() for x in ["jack o'lantern", "trickster", "werewolf", "pumpkin", "candy shop"])],
+        "🧰  CRAFTED SETS": [i for i in ALL_LOOT if "crafted" in i[1].lower()],
+    }
 
     while True:
         clear_screen()
@@ -708,9 +801,12 @@ def _debug_loot_menu(warrior):
                 print(f"  💍 Finger 2 : {eq.get('finger_2').short_label() if eq.get('finger_2') else '(none)'}")
                 print(f"  Stats: ATK {warrior.min_atk}-{warrior.max_atk}  DEF {warrior.defence}  HP {warrior.hp}/{warrior.max_hp}\n")
 
-                for num, label, _ in ALL_LOOT:
-                    print(f"  {num:>2}) {label}")
-                print("   0) Done")
+                for cat_name, cat_items in LOOT_CATEGORIES.items():
+                    if cat_items:
+                        print(f"\n  {cat_name}")
+                        for num, label, _ in cat_items:
+                            print(f"    {num:>3}) {label}")
+                print("\n    0) Done")
                 item_choice = _real_input("\n  Pick item > ").strip()
                 if item_choice == "0":
                     break
@@ -759,6 +855,153 @@ def _debug_loot_menu(warrior):
                         name, defence, max_hp = shield_map[monster_key]
                         item = Equipment(name=name, slot="shield", rarity="normal",
                                          defence=defence, max_hp=max_hp)
+                    elif monster_key == "DEBUG_SHARPENED_TUSK":
+                        from equipment import SHARPENED_TUSK_STATS, scale_bleed_stat, JAVELINA_TUSK_STATS
+                        chosen_rarity = _pick_rarity()
+                        if not chosen_rarity:
+                            print("Invalid rarity.")
+                            _real_input("\nPress Enter...")
+                            continue
+                        s = SHARPENED_TUSK_STATS.get(chosen_rarity, SHARPENED_TUSK_STATS["mythril"])
+                        jt = JAVELINA_TUSK_STATS.get(chosen_rarity, JAVELINA_TUSK_STATS["mythril"])
+                        item = Equipment(
+                            name="Sharpened Tusk", slot="accessory", rarity=chosen_rarity,
+                            atk_min=s["atk_bonus"], atk_max=s["atk_bonus"],
+                            bleed_turns=scale_bleed_stat(jt["bleed_turns"]),
+                            bleed_dmg_min=scale_bleed_stat(jt["bleed_dmg_min"]),
+                            bleed_dmg_max=scale_bleed_stat(jt["bleed_dmg_max"]),
+                        )
+                    elif monster_key in ("DEBUG_STONEHEART", "DEBUG_TIGER_FANG",
+                                         "DEBUG_STONESKIN", "DEBUG_SPIRIT_CRYSTAL",
+                                         "DEBUG_ADRENALINE_RING"):
+                        ring_data = {
+                            "DEBUG_STONEHEART":      ("Stoneheart Pendant", 0, 10, 0, 0, 0, 0),
+                            "DEBUG_TIGER_FANG":      ("Tiger Fang",         0,  0, 2, 2, 0, 0),
+                            "DEBUG_STONESKIN":        ("Stoneskin Band",     2,  0, 0, 0, 0, 0),
+                            "DEBUG_SPIRIT_CRYSTAL":   ("Spirit Crystal",     0,  0, 0, 0, 2, 0),
+                            "DEBUG_ADRENALINE_RING":  ("Adrenaline Ring",    0,  0, 0, 0, 0, 2),
+                        }
+                        rname, rdef, rhp, ratk_min, ratk_max, rap, rrage = ring_data[monster_key]
+                        item = Equipment(
+                            name=rname, slot="ring", rarity="normal",
+                            defence=rdef, max_hp=rhp,
+                            atk_min=ratk_min, atk_max=ratk_max,
+                            max_ap_bonus=rap, max_rage_bonus=rrage,
+                        )
+                    elif monster_key == "DEBUG_RAT_FANG":
+                        # Placeholder — equipment stats TBD
+                        item = Equipment(
+                            name="Rat Fang", slot="accessory", rarity="normal",
+                            flavour="A jagged fang pulled from a giant diseased rat. Reeks of plague.",
+                        )
+                    elif monster_key == "DEBUG_SEED_LAUNCHER":
+                        rarity = _pick_rarity()
+                        if not rarity:
+                            _real_input("\nInvalid rarity. Press Enter...")
+                            continue
+                        from collectibles import SEED_LAUNCHER_STATS
+                        sl_stats = SEED_LAUNCHER_STATS[rarity]
+                        item = Equipment(
+                            name="Enchanted Seed Launcher", slot="weapon",
+                            rarity=rarity, tier=1,
+                            flavour=f"Seeds: {sl_stats['min_seeds']}-{sl_stats['max_seeds']}, "
+                                    f"Dmg/seed: {sl_stats['min_dmg']}-{sl_stats['max_dmg']}. "
+                                    f"33% proc chance per turn.",
+                        )
+                        item.seed_min_count = sl_stats["min_seeds"]
+                        item.seed_max_count = sl_stats["max_seeds"]
+                        item.seed_min_dmg = sl_stats["min_dmg"]
+                        item.seed_max_dmg = sl_stats["max_dmg"]
+                    elif monster_key == "DEBUG_BERSERK_TRINKET":
+                        print("\n  Berserk turns: 1) Poor (1t)  2) Normal (2t)  3) Uncommon (3t)  4) Rare (4t)")
+                        bt_choice = _real_input("  Pick > ").strip()
+                        bt_data = {"1": ("poor", 1), "2": ("normal", 2), "3": ("uncommon", 3), "4": ("rare", 4)}
+                        bt_rar, bt_turns = bt_data.get(bt_choice, ("normal", 2))
+                        item = Equipment(
+                            name="Trinket of Berserk", slot="trinket", rarity=bt_rar,
+                            berserk_turns=bt_turns,
+                        )
+                    elif monster_key == "DEBUG_SHARPENED_SUCKER":
+                        from collectibles import SHARPENED_SUCKER_STATS
+                        rarity = _pick_rarity()
+                        if not rarity:
+                            _real_input("\nInvalid rarity. Press Enter...")
+                            continue
+                        stats = SHARPENED_SUCKER_STATS.get(rarity, SHARPENED_SUCKER_STATS["normal"])
+                        item = Equipment(
+                            name="Sharpened Sucker", slot="weapon",
+                            rarity=rarity, tier=2,
+                            atk_min=stats["atk_min"], atk_max=stats["atk_max"],
+                            bleed_turns=stats["bleed_turns"],
+                            bleed_dmg_min=stats["bleed_dmg"],
+                            bleed_dmg_max=stats["bleed_dmg"],
+                        )
+                        item.sucker_heal_pct = stats["heal_pct"]
+                        item.sucker_multi_min = stats["multi_min"]
+                        item.sucker_multi_max = stats["multi_max"]
+                        parts = [f"ATK {stats['atk_min']}"]
+                        if stats["bleed_dmg"] > 0:
+                            parts.append(f"Bleed {stats['bleed_dmg']}/1t")
+                        if stats["heal_pct"] > 0:
+                            parts.append(f"Heal {int(stats['heal_pct']*100)}% of bleed")
+                        if stats["multi_max"] > 1:
+                            parts.append(f"Multi-strike {stats['multi_min']}-{stats['multi_max']}")
+                        item.flavour = (
+                            f"A lollipop honed to a razor point. "
+                            f"{'. '.join(parts)}."
+                        )
+                    elif monster_key == "DEBUG_WEREWOLF_CLOAK":
+                        from equipment import WEREWOLF_CLOAK_STATS
+                        rarity = _pick_rarity()
+                        if not rarity:
+                            _real_input("\nInvalid rarity. Press Enter...")
+                            continue
+                        stats = WEREWOLF_CLOAK_STATS.get(rarity, WEREWOLF_CLOAK_STATS["normal"])
+                        item = Equipment(
+                            name="Werewolf Cloak", slot="cape",
+                            rarity=rarity, tier=3,
+                            defence=stats["defence"],
+                            max_hp=stats["max_hp"],
+                        )
+                        item.flavour = (
+                            f"A tattered cloak left behind by a cursed soul. "
+                            f"DEF +{stats['defence']}"
+                            + (f", HP +{stats['max_hp']}" if stats["max_hp"] > 0 else "")
+                            + "."
+                        )
+                    elif monster_key == "DEBUG_PUMPKIN_HELM":
+                        from equipment import PUMPKIN_HELM_STATS
+                        rarity = _pick_rarity()
+                        if not rarity:
+                            _real_input("\nInvalid rarity. Press Enter...")
+                            continue
+                        stats = PUMPKIN_HELM_STATS.get(rarity, PUMPKIN_HELM_STATS["normal"])
+                        item = Equipment(
+                            name="Pumpkin Helm", slot="helm",
+                            rarity=rarity, tier=4,
+                            defence=stats["defence"],
+                            max_hp=stats["max_hp"],
+                        )
+                        item.magic_res_bonus = stats["magic_res"]
+                        item.dread_aura_chance = stats["dread_aura"]
+                        item.flavour = (
+                            f"The Horseman's carved jack-o-lantern, still glowing. "
+                            f"DEF +{stats['defence']}, HP +{stats['max_hp']}"
+                            + (f", MR +{stats['magic_res']}" if stats["magic_res"] > 0 else "")
+                            + f", Dread Aura {int(stats['dread_aura']*100)}%."
+                        )
+                    elif monster_key == "DEBUG_PUMPKIN_VINE_TOTEM":
+                        from collectibles import _build_vine_totem
+                        rarity = _pick_rarity()
+                        if not rarity:
+                            rarity = "normal"
+                        item = _build_vine_totem(rarity)
+                    elif monster_key == "DEBUG_JACK_HEAD":
+                        from collectibles import _build_jack_o_lantern_head
+                        rarity = _pick_rarity()
+                        if not rarity:
+                            rarity = "rare"
+                        item = _build_jack_o_lantern_head(rarity)
                     elif monster_key in weapon_core_map:
                         # Build weapon core directly using current difficulty stats
                         corrupted, two_handed = weapon_core_map[monster_key]
@@ -834,9 +1077,12 @@ def _debug_loot_menu(warrior):
                 print(f"  💍 Finger 2 : {eq.get('finger_2').short_label() if eq.get('finger_2') else '(none)'}")
                 print(f"  Stats: ATK {warrior.min_atk}-{warrior.max_atk}  DEF {warrior.defence}  HP {warrior.hp}/{warrior.max_hp}\n")
 
-                for num, label, _ in ALL_LOOT:
-                    print(f"  {num:>2}) {label}")
-                print("   0) Done")
+                for cat_name, cat_items in LOOT_CATEGORIES.items():
+                    if cat_items:
+                        print(f"\n  {cat_name}")
+                        for num, label, _ in cat_items:
+                            print(f"    {num:>3}) {label}")
+                print("\n    0) Done")
                 item_choice = _real_input("\n  Pick item > ").strip()
                 if item_choice == "0":
                     break
@@ -886,6 +1132,153 @@ def _debug_loot_menu(warrior):
                         name, defence, max_hp = shield_map[monster_key]
                         item = Equipment(name=name, slot="shield", rarity="normal",
                                          defence=defence, max_hp=max_hp)
+                    elif monster_key == "DEBUG_SHARPENED_TUSK":
+                        from equipment import SHARPENED_TUSK_STATS, scale_bleed_stat, JAVELINA_TUSK_STATS
+                        chosen_rarity = _pick_rarity()
+                        if not chosen_rarity:
+                            print("Invalid rarity.")
+                            _real_input("\nPress Enter...")
+                            continue
+                        s = SHARPENED_TUSK_STATS.get(chosen_rarity, SHARPENED_TUSK_STATS["mythril"])
+                        jt = JAVELINA_TUSK_STATS.get(chosen_rarity, JAVELINA_TUSK_STATS["mythril"])
+                        item = Equipment(
+                            name="Sharpened Tusk", slot="accessory", rarity=chosen_rarity,
+                            atk_min=s["atk_bonus"], atk_max=s["atk_bonus"],
+                            bleed_turns=scale_bleed_stat(jt["bleed_turns"]),
+                            bleed_dmg_min=scale_bleed_stat(jt["bleed_dmg_min"]),
+                            bleed_dmg_max=scale_bleed_stat(jt["bleed_dmg_max"]),
+                        )
+                    elif monster_key in ("DEBUG_STONEHEART", "DEBUG_TIGER_FANG",
+                                         "DEBUG_STONESKIN", "DEBUG_SPIRIT_CRYSTAL",
+                                         "DEBUG_ADRENALINE_RING"):
+                        ring_data = {
+                            "DEBUG_STONEHEART":      ("Stoneheart Pendant", 0, 10, 0, 0, 0, 0),
+                            "DEBUG_TIGER_FANG":      ("Tiger Fang",         0,  0, 2, 2, 0, 0),
+                            "DEBUG_STONESKIN":        ("Stoneskin Band",     2,  0, 0, 0, 0, 0),
+                            "DEBUG_SPIRIT_CRYSTAL":   ("Spirit Crystal",     0,  0, 0, 0, 2, 0),
+                            "DEBUG_ADRENALINE_RING":  ("Adrenaline Ring",    0,  0, 0, 0, 0, 2),
+                        }
+                        rname, rdef, rhp, ratk_min, ratk_max, rap, rrage = ring_data[monster_key]
+                        item = Equipment(
+                            name=rname, slot="ring", rarity="normal",
+                            defence=rdef, max_hp=rhp,
+                            atk_min=ratk_min, atk_max=ratk_max,
+                            max_ap_bonus=rap, max_rage_bonus=rrage,
+                        )
+                    elif monster_key == "DEBUG_RAT_FANG":
+                        # Placeholder — equipment stats TBD
+                        item = Equipment(
+                            name="Rat Fang", slot="accessory", rarity="normal",
+                            flavour="A jagged fang pulled from a giant diseased rat. Reeks of plague.",
+                        )
+                    elif monster_key == "DEBUG_SEED_LAUNCHER":
+                        rarity = _pick_rarity()
+                        if not rarity:
+                            _real_input("\nInvalid rarity. Press Enter...")
+                            continue
+                        from collectibles import SEED_LAUNCHER_STATS
+                        sl_stats = SEED_LAUNCHER_STATS[rarity]
+                        item = Equipment(
+                            name="Enchanted Seed Launcher", slot="weapon",
+                            rarity=rarity, tier=1,
+                            flavour=f"Seeds: {sl_stats['min_seeds']}-{sl_stats['max_seeds']}, "
+                                    f"Dmg/seed: {sl_stats['min_dmg']}-{sl_stats['max_dmg']}. "
+                                    f"33% proc chance per turn.",
+                        )
+                        item.seed_min_count = sl_stats["min_seeds"]
+                        item.seed_max_count = sl_stats["max_seeds"]
+                        item.seed_min_dmg = sl_stats["min_dmg"]
+                        item.seed_max_dmg = sl_stats["max_dmg"]
+                    elif monster_key == "DEBUG_BERSERK_TRINKET":
+                        print("\n  Berserk turns: 1) Poor (1t)  2) Normal (2t)  3) Uncommon (3t)  4) Rare (4t)")
+                        bt_choice = _real_input("  Pick > ").strip()
+                        bt_data = {"1": ("poor", 1), "2": ("normal", 2), "3": ("uncommon", 3), "4": ("rare", 4)}
+                        bt_rar, bt_turns = bt_data.get(bt_choice, ("normal", 2))
+                        item = Equipment(
+                            name="Trinket of Berserk", slot="trinket", rarity=bt_rar,
+                            berserk_turns=bt_turns,
+                        )
+                    elif monster_key == "DEBUG_SHARPENED_SUCKER":
+                        from collectibles import SHARPENED_SUCKER_STATS
+                        rarity = _pick_rarity()
+                        if not rarity:
+                            _real_input("\nInvalid rarity. Press Enter...")
+                            continue
+                        stats = SHARPENED_SUCKER_STATS.get(rarity, SHARPENED_SUCKER_STATS["normal"])
+                        item = Equipment(
+                            name="Sharpened Sucker", slot="weapon",
+                            rarity=rarity, tier=2,
+                            atk_min=stats["atk_min"], atk_max=stats["atk_max"],
+                            bleed_turns=stats["bleed_turns"],
+                            bleed_dmg_min=stats["bleed_dmg"],
+                            bleed_dmg_max=stats["bleed_dmg"],
+                        )
+                        item.sucker_heal_pct = stats["heal_pct"]
+                        item.sucker_multi_min = stats["multi_min"]
+                        item.sucker_multi_max = stats["multi_max"]
+                        parts = [f"ATK {stats['atk_min']}"]
+                        if stats["bleed_dmg"] > 0:
+                            parts.append(f"Bleed {stats['bleed_dmg']}/1t")
+                        if stats["heal_pct"] > 0:
+                            parts.append(f"Heal {int(stats['heal_pct']*100)}% of bleed")
+                        if stats["multi_max"] > 1:
+                            parts.append(f"Multi-strike {stats['multi_min']}-{stats['multi_max']}")
+                        item.flavour = (
+                            f"A lollipop honed to a razor point. "
+                            f"{'. '.join(parts)}."
+                        )
+                    elif monster_key == "DEBUG_WEREWOLF_CLOAK":
+                        from equipment import WEREWOLF_CLOAK_STATS
+                        rarity = _pick_rarity()
+                        if not rarity:
+                            _real_input("\nInvalid rarity. Press Enter...")
+                            continue
+                        stats = WEREWOLF_CLOAK_STATS.get(rarity, WEREWOLF_CLOAK_STATS["normal"])
+                        item = Equipment(
+                            name="Werewolf Cloak", slot="cape",
+                            rarity=rarity, tier=3,
+                            defence=stats["defence"],
+                            max_hp=stats["max_hp"],
+                        )
+                        item.flavour = (
+                            f"A tattered cloak left behind by a cursed soul. "
+                            f"DEF +{stats['defence']}"
+                            + (f", HP +{stats['max_hp']}" if stats["max_hp"] > 0 else "")
+                            + "."
+                        )
+                    elif monster_key == "DEBUG_PUMPKIN_HELM":
+                        from equipment import PUMPKIN_H_STATS
+                        rarity = _pick_rarity()
+                        if not rarity:
+                            _real_input("\nInvalid rarity. Press Enter...")
+                            continue
+                        stats = PUMPKIN_H_STATS.get(rarity, PUMPKIN_H_STATS["normal"])
+                        item = Equipment(
+                            name="Pumpkin Helm", slot="helm",
+                            rarity=rarity, tier=4,
+                            defence=stats["defence"],
+                            max_hp=stats["max_hp"],
+                        )
+                        item.magic_res_bonus = stats["magic_res"]
+                        item.dread_aura_chance = stats["dread_aura"]
+                        item.flavour = (
+                            f"The Horseman's carved jack-o-lantern, still glowing. "
+                            f"DEF +{stats['defence']}, HP +{stats['max_hp']}"
+                            + (f", MR +{stats['magic_res']}" if stats["magic_res"] > 0 else "")
+                            + f", Dread Aura {int(stats['dread_aura']*100)}%."
+                        )
+                    elif monster_key == "DEBUG_PUMPKIN_VINE_TOTEM":
+                        from collectibles import _build_vine_totem
+                        rarity = _pick_rarity()
+                        if not rarity:
+                            rarity = "normal"
+                        item = _build_vine_totem(rarity)
+                    elif monster_key == "DEBUG_JACK_HEAD":
+                        from collectibles import _build_jack_o_lantern_head
+                        rarity = _pick_rarity()
+                        if not rarity:
+                            rarity = "rare"
+                        item = _build_jack_o_lantern_head(rarity)
                     elif monster_key in weapon_core_map:
                         corrupted, two_handed = weapon_core_map[monster_key]
                         from equipment import _get_weapon_core_stats
@@ -1001,6 +1394,9 @@ def _debug_potion_menu(warrior):
         ("12", "burn_cream",   "Burn Cream        (clear fire stacks)"),
         ("13", "cure_all",     "Cure-All Tonic    (clear all status, not psychic)"),
         ("14", "elixir",       "Elixir            (50% HP + 50% AP)"),
+        # ── Seasonal collectibles (v0.8.04) ──
+        ("15", "birthday_cake",        "🎂 Birthday Cake   (full restore + Sugar Rush)"),
+        ("16", "book_of_lost_secrets", "📖 Book of Lost Secrets (learn/rank any skill)"),
     ]
 
     while True:
@@ -1017,7 +1413,7 @@ def _debug_potion_menu(warrior):
         for num, key, label in POTION_LIST:
             print(f"  {num:>2}) {label}")
         print()
-        print("  15) Add ALL potions x3 (quick fill)")
+        print("  17) Add ALL potions x3 (quick fill)")
         print("   0) Back")
 
         choice = _real_input("\nPick potion to add > ").strip()
@@ -1025,7 +1421,7 @@ def _debug_potion_menu(warrior):
         if choice == "0":
             return
 
-        if choice == "15":
+        if choice == "17":
             for _, key, _ in POTION_LIST:
                 if key in warrior.potions:
                     warrior.potions[key] += 3
@@ -1087,6 +1483,10 @@ def monster_select_menu():
     print("16) Drowned One")
     print("17) Goblin Warrior")
     print("18) Patronus (Evil Path Boss)")
+    print("19) Giant Diseased Rat (Noob-exclusive)")
+    print("20) Giant Animated Jack O'Lantern (Halloween)")
+    print("21) The Trickster (Halloween)")
+    print("22) Female Werewolf (Halloween)")
     print("0) Cancel")
     print("==========================")
 
@@ -1111,6 +1511,10 @@ def monster_select_menu():
         "16": Drowned_One,
         "17": Goblin_Warrior,
         "18": Patronus,
+        "19": Giant_Diseased_Rat,
+        "20": Giant_Animated_Jack_O_Lantern,
+        "21": The_Trickster,
+        "22": Female_Werewolf,
     }
 
     # NEW — tier lookup (logic only)
@@ -1124,6 +1528,10 @@ def monster_select_menu():
         "16": 3,  # Drowned One
         "17": 3,  # Goblin Warrior
         "18": 5,  # Patronus
+        "19": 1,  # Giant Diseased Rat
+        "20": 1,  # Giant Animated Jack O'Lantern (Halloween)
+        "21": 2,  # The Trickster (Halloween)
+        "22": 3,  # Female Werewolf (Halloween)
     }
 
     if choice == "0":

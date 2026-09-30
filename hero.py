@@ -57,6 +57,7 @@ def assassins_strike_available(*a, **kw): return _lazy_combat().assassins_strike
 def assassins_strike_ap_cost(*a, **kw):   return _lazy_combat().assassins_strike_ap_cost(*a, **kw)
 def assassins_strike(*a, **kw):      return _lazy_combat().assassins_strike(*a, **kw)
 def chimera_fury_add(*a, **kw):      return _lazy_combat().chimera_fury_add(*a, **kw)
+def patronus_smite_add(*a, **kw):    return _lazy_combat().patronus_smite_add(*a, **kw)
 def display_run_score(*a, **kw):     return _lazy_gold().display_run_score(*a, **kw)
 
 
@@ -244,6 +245,18 @@ class Hero(Creator):
                 "skill_rank_up": 0,    # ranks up one learned skill by 1
                 "stat_point":    0,    # +2 stat points (assigned immediately)
                 "skill_point":   0,    # +2 skill points (spent immediately)
+                # ── Seasonal collectibles (v0.8.04) ──
+                "birthday_cake":        0,  # 🎂 August — replaces Frostpine in Aug
+                "book_of_lost_secrets": 0,  # 📖 March — replaces Frostpine in Mar
+                # ── Speed potions (v0.8.05) ──
+                "nobs_secret_sauce":    0,  # 🧪 Unique — double atk + 15% ATK/+1 min ATK/+1 DEF/+1 AP, 2 turns
+                "swift_potion":         0,  # ⚡ Double attack for 1 turn (no stat boost)
+                # ── Elemental resistance (v0.8) ──
+                "arcane_ward":          0,  # 🔮 +1 permanent elemental resistance
+                "fort_draught":         0,  # 🛡️ +1 permanent defence
+                # ── Halloween seasonal (v0.08) ──
+                "silver_tonic":         0,  # 🐺 Cure lycanthropy
+                "monster_candy":       0,  # 👹 Fear throwable (Halloween)
             }
         else:
             self.potions = potions
@@ -431,6 +444,13 @@ class Hero(Creator):
         if cjr_line:
             right_lines.append(cjr_line)
 
+        # Lycanthropy conversion bar — only visible during werewolf fights
+        lyc = getattr(self, "lycanthropy_charge", 0)
+        if lyc > 0:
+            lyc_filled = int(lyc / 10)
+            lyc_bar = "█" * lyc_filled + "░" * (10 - lyc_filled)
+            right_lines.append(f"🐺 Lycanthropy: [{lyc_bar}] {lyc}%")
+
         # --- Left column strings ---
         left_name = f"🧝 {self.name.title()}"
         left_hp   = f"   ❤️  [{hero_bar}] {self.hp}/{self.max_hp}"
@@ -494,8 +514,13 @@ class Hero(Creator):
 
 
         print(f"❤️ HP: {self.hp}/{self.max_hp}   🔵 AP: {self.ap}/{self.max_ap}")
-        print(f"⚔️ ATK: {self.min_atk}-{self.max_atk}   🛡️ DEF: {self.defence}")
-
+        mr = getattr(self, "magic_resistance", 0)
+        mr_tag = f"   🔮 RES: {mr}" if mr > 0 else ""
+        print(f"⚔️ ATK: {self.min_atk}-{self.max_atk}   🛡️ DEF: {self.defence}{mr_tag}")
+        candy = getattr(self, "halloween_candy", 0)
+        candy_tag = f"   🍬 Candy: {candy}" if candy > 0 else ""
+        if candy_tag:
+            print(f"🎃 Halloween Candy: {candy}")
         # Bonus sources (the stuff you care about mid-fight)
         adr = getattr(self, "current_bonus_damage", 0)
         wc_bonus = getattr(self, "war_cry_bonus", 0)
@@ -676,7 +701,9 @@ class Hero(Creator):
         print("\n" + "=" * 40)
         print(f"Hero: {self.name}   |   Level: {self.level}")
         print(f"HP: {self.hp}/{self.max_hp}  |  ATK: {self.min_atk}-{self.max_atk}")
-        print(f"AP: {self.ap}/{self.max_ap}  |  DEF: {self.defence}")
+        mr = getattr(self, "magic_resistance", 0)
+        mr_tag = f"  |  RES: {mr}" if mr > 0 else ""
+        print(f"AP: {self.ap}/{self.max_ap}  |  DEF: {self.defence}{mr_tag}")
         print(f"XP: {self.xp}/{self.xp_to_lvl}")
         print(f"Gold: {self.gold}")
 
@@ -792,7 +819,9 @@ class Hero(Creator):
         p1_weights = [50, 30, 30, 20]
 
         # 20% chance for a 3rd p1 option (Jackpot)
-        num_p1_rolls = 3 if random.random() < 0.20 else 2
+        # v0.8.01: Champion difficulty bumps this to 30%
+        _jackpot_p1_chance = 0.30 if getattr(self, "difficulty", "warrior") == "champion" else 0.20
+        num_p1_rolls = 3 if random.random() < _jackpot_p1_chance else 2
         if num_p1_rolls == 3:
             print("🌟 Bonus! You earned an extra Random Buff!")
         
@@ -817,12 +846,14 @@ class Hero(Creator):
                 print(f"\n{YELLOW}✨ You feel a surge of primal power!{RESET}")
                 print("🔥 Random Buff: Adrenaline +1 (Permanent Damage)")
         # --- PART 2: Specialization (Weighted) ---
-        # 30% Skill Point, 30% Stat Point, 20% Max AP, 20% Berserk
-        p2_options = ["skill", "stat", "ap", "berserk"]
-        p2_weights = [30, 30, 20, 20]
+        # 25% Skill Point, 25% Stat Point, 20% Max AP, 15% Berserk, 15% Elemental Resistance
+        p2_options = ["skill", "stat", "ap", "berserk", "magic_res"]
+        p2_weights = [25, 25, 20, 15, 15]
         
         # 10% chance to roll twice (Jackpot)
-        num_rolls = 2 if random.random() < 0.10 else 1
+        # v0.8.01: Champion difficulty bumps this to 15%
+        _jackpot_p2_chance = 0.15 if getattr(self, "difficulty", "warrior") == "champion" else 0.10
+        num_rolls = 2 if random.random() < _jackpot_p2_chance else 1
         if num_rolls == 2:
             print("🌟 JACKPOT! You earned a Double Specialization Reward!")
             self.jackpot_count = getattr(self, "jackpot_count", 0) + 1
@@ -843,6 +874,9 @@ class Hero(Creator):
                 # Directly increase the bonus damage from 6 -> 7 -> 8 etc.
                 self.berserk_bonus += 1
                 print(f"🩸 Spec: +1 Berserk Power (Now +{self.berserk_bonus} dmg)")
+            elif spec == "magic_res":
+                self.magic_resistance += 1
+                print(f"🔮 Spec: +1 Elemental Resistance (Now {self.magic_resistance})")
 
         # 4. BASE POINT REWARDS
         # At level 5, player gets 5 points each. Otherwise, 2 points each.
@@ -1377,6 +1411,10 @@ def skill_menu(hero, enemy):
             if hasattr(enemy, "chimera_fury_charge"):
                 rank_used = hero.skill_ranks.get(key, 1)
                 chimera_fury_add(enemy, hero, rank_used)
+            # Patronus Smite — build charge based on rank of skill used
+            if hasattr(enemy, "smite_meter"):
+                rank_used = hero.skill_ranks.get(key, 1)
+                patronus_smite_add(enemy, hero, rank_used)
             return True
         
         
@@ -1391,6 +1429,13 @@ def compute_adrenaline_bonus(warrior):
     Returns bonus damage from adrenaline tiers + rage stat.
     Berserk is triggered separately based on HP.
     """
+    # Disease Stack 3 suppresses adrenaline entirely
+    if getattr(warrior, "disease_adrenaline_suppressed", False):
+        if warrior.rage_state != 0:
+            warrior.rage_state = 0
+            print("🦠 The disease dulls your senses — adrenaline suppressed!")
+        return 0
+
     hp_percent = warrior.hp / warrior.max_hp
 
     # Finalized tiers: max +3 bonus
@@ -1449,6 +1494,10 @@ def check_berserk_trigger(warrior):
     # Reset berserk_used if HP rises above 20%
     if warrior.hp / warrior.max_hp > 0.20:
         warrior.berserk_used = False
+
+    # Disease Stack 3 blocks berserk from firing
+    if getattr(warrior, "disease_berserk_blocked", False):
+        return
 
     # Already active or already used for this low-HP cycle
     if warrior.berserk_active or warrior.berserk_used:
@@ -1567,10 +1616,12 @@ class Warrior(Hero):
             name="warrior",
             hp=30,
             min_atk=1,
-            # v0.7.18: was 5. The sex prompt sets Male 1-6 / Female 2-5
-            # (both avg 3.5), but debug paths that skip the prologue kept
-            # this old 1-5 default (avg 3.0) — a secretly weaker third
-            # profile. Default now matches the default sex (male).
+            # v0.8.01: defaults are MALE stats (30 HP, 1-6 ATK, 0 DEF, 3 AP).
+            # The sex prompt in ashenveil_prologue() overwrites these to the
+            # full sex profile:
+            #   Male   — 30 HP, ATK 1-6, 0 DEF, 3 AP
+            #   Female — 27 HP, ATK 2-4, 1 DEF, 4 AP
+            # Debug paths that skip the prologue get male defaults.
             max_atk=6,
             gold=3,
             xp=0,
@@ -1619,6 +1670,19 @@ class Warrior(Hero):
         self.berserk_used_this_fight = False  # v0.6.21: per-fight scoring flag (reset each fight)
         self.berserk_turns   = 0
         self.berserk_bonus   = 0      # extra flat damage while berserk
+
+        # ------------------------------------------------------------------
+        # ELEMENTAL RESISTANCE
+        # Flat damage reduction vs elemental/magical attacks (poison, fire,
+        # acid, chaos, divine). Works like defence but only for elemental.
+        # Earned via level-up bonus pool or merchant potion — NOT investable.
+        # ------------------------------------------------------------------
+        self.magic_resistance = 0
+
+        # ------------------------------------------------------------------
+        # HALLOWEEN CANDY (seasonal currency — hidden outside October)
+        # ------------------------------------------------------------------
+        self.halloween_candy = 0
 
         # ------------------------------------------------------------------
         # WAR CRY SYSTEM

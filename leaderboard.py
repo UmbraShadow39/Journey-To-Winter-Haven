@@ -59,6 +59,7 @@ import os
 import urllib.request
 import urllib.error
 from datetime import datetime
+import sys
 
 
 # ---------------------------------------------------------------
@@ -70,7 +71,10 @@ def _load_env():
     current working directory. Returns (url, key) or (None, None) if
     missing — global submission is skipped gracefully when absent.
     """
-    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if getattr(sys, 'frozen', False):
+        env_path = os.path.join(os.path.dirname(sys.executable), ".env")
+    else:
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
     if not os.path.exists(env_path):
         return None, None
     url = None
@@ -378,6 +382,7 @@ def show_leaderboard(highlight_entry=None, header="TOP 10 LEADERBOARD", difficul
     print(bar)
     print(f"  🏆  {header}")
     print(bar)
+    print("Rank Name   🛡️ Noob  ⚔️ Warrior  👑 Champion  🐛 Debug  ")
     print(" RNK NAME           SEX LVL   SCORE  RANK OUTCOME        DATE")
     print(" " + "─" * (width - 2))
 

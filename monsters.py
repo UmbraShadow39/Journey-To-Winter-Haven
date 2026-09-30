@@ -58,6 +58,7 @@ __all__ = [
     "Brittle_Skeleton", "rot_thrust", "Imp", "Wolf_Pup", "Dire_Wolf_Pup", "Red_Slime",
     "Fallen_Warrior", "Noob_Ghost", "Wolf_Pup_Rider", "Javelina",
     "Hydra_Hatchling", "Flayed_One", "Drowned_One",
+    "Giant_Diseased_Rat",
     "Young_Chimera", "Patronus",
 
     # Monster AI / special-move functions (public)
@@ -67,16 +68,17 @@ __all__ = [
     "imp_sneak_attack", "brittle_skeleton_thrust", "rot_thrust",
     "wolf_pup_bite", "devouring_bite",
     "ghost_life_leech", "blinding_charge",
+    "plague_bite", "tick_disease", "clear_disease",
     "impact_bite", "fallen_warp_should_trigger", "fallen_defence_warp",
     "hydra_hatchling_acid_spit", "savage_slash",
     "psychic_shred", "trigger_pressure_feedback",
     "check_drown_punishment", "psychic_drown",
-    "primordial_surge", "chimera_elemental_strike",
+    "chaos_breath", "chimera_elemental_strike",
     "chimera_boost", "chimera_double", "chimera_triple",
     "chimera_combo_bonus", "chimera_special_dispatcher",
     "patronus_double_strike", "patronus_war_cry", "patronus_power_charge",
     "patronus_first_aid", "patronus_defence_break",
-    "patronus_ai",
+    "patronus_ai", "patronus_smite", "_restore_patronus_smite_def",
 
     # Encounter helpers
     "monster_level_for_round", "title_for_level", "apply_level_scaling",
@@ -94,7 +96,7 @@ __all__ = [
     "_apply_psychic_debuff_to_stats",
     "_clear_psychic_debuff",
     "_clear_psychic_drown",
-    "_restore_primordial_stats",
+    "_restore_chaos_breath_stats",
     "_restore_patronus_def",
     "_tick_patronus_war_cry",
     "_tick_patronus_def_break",
@@ -119,9 +121,21 @@ def monster_ai_check(monster, turn_number):
     if monster.ap <= 0:
         return False
 
+    # Seasonal alphas (Halloween) — guaranteed first, then 66%
+    if getattr(monster, "alpha_special", False):
+        if getattr(monster, "rounds_in_combat", 0) <= 1:
+            return True
+        return random.random() < 0.66
+
+    # Difficulty-exclusive alphas — guaranteed first, then 50%
+    if getattr(monster, "alpha_regular", False):
+        if getattr(monster, "rounds_in_combat", 0) <= 1:
+            return True
+        return random.random() < 0.50
+
     if tier == 1:
-        # Guaranteed special on first enemy action
-        if turn_number == 1:
+        # Guaranteed special on the monster's first action, then 50%
+        if getattr(monster, "rounds_in_combat", 0) <= 1:
             return True
         return random.random() < 0.50
 
@@ -234,6 +248,10 @@ def red_slime_fire_spit(slime, hero):
         fire_damage = random.randint((2 + b) * 2, (3 + b) * 2)
     else:
         fire_damage = random.randint(2 + b, 3 + b)
+    # Elemental resistance reduces fire damage
+    mr = int(getattr(hero, "magic_resistance", 0) or 0)
+    if mr > 0:
+        fire_damage = max(0, fire_damage - mr)
     hero.hp = max(0, hero.hp - fire_damage)
 
     monster_math_breakdown(
@@ -537,6 +555,215 @@ def devouring_bite(enemy, warrior):
 
     show_health(warrior)
     return actual
+
+
+# ===============================
+# Giant Diseased Rat — Plague Bite
+# ===============================
+# v0.8 — Noob-exclusive T1 alpha.
+# Disease uses DELTA-BASED tracking (like rot_max_hp_loss, acid_defence_loss)
+# instead of snapshotting originals. This means level-ups during disease
+# stack correctly — clearing disease adds the loss back, it doesn't
+# restore to a stale snapshot.
+#
+# Stack 1: Tick 1 = -1 ATK + 2-3 dmg | Tick 2 = -1 DEF + 2-3 dmg
+# Stack 2: Tick 1 = -1 max AP + 2-3 dmg | Tick 2 = -5 max HP + 2-3 dmg
+# Stack 3: Tick 1 = suppress adrenaline + 2-3 dmg | Tick 2 = block berserk + 2-3 dmg
+#
+# After fight: all stat losses are added back. Max AP/HP caps restore but
+# current AP/HP do NOT heal — same pattern as rot.
+
+def plague_bite(enemy, hero):
+    """
+    Giant Diseased Rat special — Plague Bite.
+    Applies escalating disease stacks. Each stack ticks for 2 turns.
+    Costs 1 AP per use.
+    """
+    if enemy.ap <= 0:
+        return None
+
+    enemy.ap -= 1
+    b = lvl_bonus(enemy)
+
+    # --- Physical hit (defence applies) ---
+    roll = random.randint(enemy.min_atk + b, enemy.max_atk + b)
+    actual = hero.apply_defence(roll, attacker=enemy)
+    hero.hp = max(0, hero.hp - actual)
+
+    print(wrap(f"🐀 {enemy.display_name} lunges and sinks its diseased fangs into you!"))
+    monster_math_breakdown(enemy, hero, roll, actual, tag="Plague Bite")
+
+    # --- Initialize disease tracking on first hit ---
+    if not hasattr(hero, "disease_stacks"):
+        hero.disease_stacks = 0
+        hero.disease_atk_loss = 0
+        hero.disease_def_loss = 0
+        hero.disease_max_ap_loss = 0
+        hero.disease_max_hp_loss = 0
+        hero.disease_adrenaline_suppressed = False
+        hero.disease_berserk_blocked = False
+
+    # --- Apply new disease stack ---
+    hero.disease_stacks += 1
+    hero.disease_ticks_left = 2          # each stack lasts 2 ticks
+    hero.disease_tick_phase = 0          # 0 = first tick hasn't fired
+    hero.disease_skip_first_tick = True  # don't tick same turn it lands
+
+    stack = hero.disease_stacks
+
+    if stack == 1:
+        print(wrap("🦠 A foul infection spreads through your veins!"))
+        print(wrap("🦠 Disease (Stack 1): ATK and DEF will weaken over 2 turns."))
+    elif stack == 2:
+        print(wrap("🦠🦠 The disease deepens — your body is failing!"))
+        print(wrap("🦠 Disease (Stack 2): Max AP and Max HP will drain over 2 turns."))
+    elif stack >= 3:
+        print(wrap("🦠🦠🦠 The plague overwhelms your survival instincts!"))
+        print(wrap("🦠 Disease (Stack 3): Adrenaline and Berserk suppressed for 2 turns."))
+
+    show_health(hero)
+    return actual
+
+
+def tick_disease(hero, is_player=True):
+    """
+    Process one disease tick. Called from collect_dot_ticks each turn.
+    Returns (damage:int, parts:list) — caller subtracts HP.
+
+    Uses delta tracking: disease_atk_loss, disease_def_loss, etc.
+    track how much was REMOVED, so clear_disease adds it back.
+    Level-ups between ticks stack correctly because we never snapshot.
+    """
+    parts = []
+    total = 0
+
+    if not getattr(hero, "disease_stacks", 0):
+        return 0, []
+
+    if getattr(hero, "disease_skip_first_tick", False):
+        hero.disease_skip_first_tick = False
+        return 0, []
+
+    stack = hero.disease_stacks
+    phase = getattr(hero, "disease_tick_phase", 0)
+
+    # --- Disease damage (2-3 per tick, all stacks) ---
+    dmg = random.randint(2, 3)
+    parts.append(("Disease", dmg))
+    total += dmg
+
+    # --- Stat effects based on stack + phase ---
+    if stack == 1:
+        if phase == 0:
+            # Tick 1: -1 ATK (delta tracked)
+            hero.min_atk = max(1, hero.min_atk - 1)
+            hero.max_atk = max(hero.min_atk, hero.max_atk - 1)
+            hero.disease_atk_loss += 1
+            print(wrap("🦠 The disease weakens your arms. (-1 ATK)"))
+        elif phase == 1:
+            # Tick 2: -1 DEF (delta tracked)
+            hero.defence = max(0, hero.defence - 1)
+            hero.disease_def_loss += 1
+            print(wrap("🦠 The infection spreads to your joints. (-1 DEF)"))
+
+    elif stack == 2:
+        if phase == 0:
+            # Tick 1: -1 max AP (delta tracked, current AP capped)
+            hero.max_ap = max(1, hero.max_ap - 1)
+            hero.ap = min(hero.ap, hero.max_ap)
+            hero.disease_max_ap_loss += 1
+            print(wrap("🦠🦠 Your stamina falters. (-1 Max AP)"))
+        elif phase == 1:
+            # Tick 2: -5 max HP (delta tracked, current HP capped)
+            hero.max_hp = max(1, hero.max_hp - 5)
+            hero.hp = min(hero.hp, hero.max_hp)
+            hero.max_overheal = int(hero.max_hp * 1.10)
+            hero.disease_max_hp_loss += 5
+            print(wrap("🦠🦠 The plague ravages your body. (-5 Max HP)"))
+
+    elif stack >= 3:
+        if phase == 0:
+            # Tick 1: suppress adrenaline
+            hero.disease_adrenaline_suppressed = True
+            print(wrap("🦠🦠🦠 The disease dulls your survival instincts. (Adrenaline suppressed)"))
+        elif phase == 1:
+            # Tick 2: block berserk
+            hero.disease_berserk_blocked = True
+            print(wrap("🦠🦠🦠 Your body can't summon its final reserves. (Berserk blocked)"))
+
+    # --- Advance tick phase ---
+    hero.disease_tick_phase = phase + 1
+    hero.disease_ticks_left -= 1
+
+    if hero.disease_ticks_left <= 0:
+        if is_player:
+            print(wrap(f"💨 Disease stack {stack} fades... but the damage lingers."))
+
+    return total, parts
+
+
+def clear_disease(hero, restore_stats=True):
+    """
+    Clear all disease effects. Called from reset_between_rounds.
+
+    DELTA-BASED restoration: adds back exactly what was lost.
+    This is level-up safe — if you levelled during disease and gained
+    +2 ATK, clearing disease adds back the 1 ATK it took. You keep
+    the level-up bonus.
+
+    Max AP and Max HP caps are restored, but current AP/HP stay
+    where they are — normal rest healing applies afterward.
+    """
+    if not getattr(hero, "disease_stacks", 0):
+        return
+
+    restored = []
+
+    # --- Restore ATK (add back the loss) ---
+    atk_loss = getattr(hero, "disease_atk_loss", 0)
+    if atk_loss > 0:
+        hero.min_atk += atk_loss
+        hero.max_atk += atk_loss
+        restored.append(f"+{atk_loss} ATK")
+
+    # --- Restore DEF (add back the loss) ---
+    def_loss = getattr(hero, "disease_def_loss", 0)
+    if def_loss > 0:
+        hero.defence += def_loss
+        restored.append(f"+{def_loss} DEF")
+
+    # --- Restore max AP (cap goes back up, current AP stays) ---
+    ap_loss = getattr(hero, "disease_max_ap_loss", 0)
+    if ap_loss > 0:
+        hero.max_ap += ap_loss
+        # Current AP does NOT heal — just the cap
+        restored.append(f"+{ap_loss} Max AP")
+
+    # --- Restore max HP (cap goes back up, current HP stays) ---
+    hp_loss = getattr(hero, "disease_max_hp_loss", 0)
+    if hp_loss > 0:
+        hero.max_hp += hp_loss
+        hero.max_overheal = int(hero.max_hp * 1.10)
+        # Current HP does NOT heal — same as rot
+        restored.append(f"+{hp_loss} Max HP")
+
+    # --- Clear adrenaline/berserk suppression ---
+    hero.disease_adrenaline_suppressed = False
+    hero.disease_berserk_blocked = False
+
+    # --- Reset all disease tracking ---
+    hero.disease_stacks = 0
+    hero.disease_ticks_left = 0
+    hero.disease_tick_phase = 0
+    hero.disease_skip_first_tick = False
+    hero.disease_atk_loss = 0
+    hero.disease_def_loss = 0
+    hero.disease_max_ap_loss = 0
+    hero.disease_max_hp_loss = 0
+
+    if restored:
+        print(wrap(f"🦠💨 The disease clears — stats restored: {', '.join(restored)}."))
+
 
 def ghost_life_leech(enemy, warrior):
     """
@@ -861,9 +1088,16 @@ def hydra_hatchling_acid_spit(enemy, warrior):
             warrior.acid_defence_loss += erosion
         print("🧪 The acid sizzles into your body — you feel weaker!")
     else:
-        # Edge case: no defence left → +2 immediate damage
-        warrior.hp = max(0, warrior.hp - 2)
-        print("🧪 With no defenses left, the acid bites deep! (+2)")
+        # Edge case: no defence left → +2 immediate damage (elemental)
+        acid_bonus = 2
+        mr = int(getattr(warrior, "magic_resistance", 0) or 0)
+        if mr > 0:
+            acid_bonus = max(0, acid_bonus - mr)
+        if acid_bonus > 0:
+            warrior.hp = max(0, warrior.hp - acid_bonus)
+            print(f"🧪 With no defenses left, the acid bites deep! (+{acid_bonus})")
+        else:
+            print("🧪 Your elemental resistance neutralizes the acid's bite!")
         show_health(warrior)
 
     return dealt
@@ -1187,9 +1421,8 @@ def psychic_drown(enemy, warrior):
     33% trigger chance (handled by monster_ai_check).
     Costs 1 AP. Max 3 uses total (hardcoded on enemy).
 
-    Standard Drowned One:  +1 AP inflation per stack, 3-turn duration
-    Hardened Drowned One:  same inflation, 6-turn duration
-    (hardened detected via enemy.level >= 2)
+    Standard Drowned One:  +1 AP inflation per stack, 2/3/4-turn duration (Noob/Warrior/Champion)
+    Hardened Drowned One:  same inflation, 3/4/5-turn duration (Noob/Warrior/Champion)
 
     Stacking: each application adds +1 stack (max 3), refreshes duration.
     At 3 stacks all rank-1 moves cost 4 AP.
@@ -1214,7 +1447,15 @@ def psychic_drown(enemy, warrior):
 
     is_hardened = getattr(enemy, "level", 1) >= 2
     is_chimera  = hasattr(enemy, "chimera_tier1")
-    duration    = (6 if is_hardened else 3) + (1 if is_chimera else 0)
+    diff = getattr(warrior, "difficulty", "warrior")
+    if diff == "champion":
+        duration = 5 if is_hardened else 4
+    elif diff == "noob":
+        duration = 3 if is_hardened else 2
+    else:
+        duration = 4 if is_hardened else 3
+    if is_chimera:
+        duration += 1
     # --- Physical hit (defence applies) ---
     roll  = random.randint(enemy.min_atk, enemy.max_atk)
     dealt = monster_deal_damage(enemy, warrior, roll, tag="Psychic Drown")
@@ -1476,6 +1717,24 @@ class Wolf_Pup(Monster):
         
         self.special_move = wolf_pup_bite
 
+class Giant_Diseased_Rat(Monster):
+    """Noob-exclusive T1 alpha. Strongest Tier 1 monster.
+    Plague Bite applies escalating disease stacks that weaken stats."""
+    def __init__(self):
+        super().__init__(
+            name="Giant Diseased Rat",
+            hp=16,
+            min_atk=4,
+            max_atk=6,
+            gold=0,
+            xp=15,
+            essence=["diseased rat essence"],
+            defence=3,
+            ap=2
+        )
+        self.loot_drop = "rat_fang"
+        self.special_move = plague_bite
+
 class Dire_Wolf_Pup(Monster):
     def __init__(self):
         super().__init__(
@@ -1666,9 +1925,9 @@ CHIMERA_TIER3_POOL = [
 
 CHIMERA_ELEMENTS = ["fire", "poison", "acid", "paralyze"]
 
-def primordial_surge(enemy, warrior, fury_triggered=False):
+def chaos_breath(enemy, warrior, fury_triggered=False):
     """
-    Chimera's signature move — Primordial Surge.
+    Chimera's signature move — Chaos Breath.
     Fury-triggered only — fires when chimera_fury_charge hits 100.
 
     Damage: Full ATK roll — ignores defence entirely.
@@ -1679,27 +1938,31 @@ def primordial_surge(enemy, warrior, fury_triggered=False):
     """
     import math
 
-    charges_left = getattr(enemy, "primordial_charges", 0)
+    charges_left = getattr(enemy, "chaos_breath_charges", 0)
 
     print(wrap(
         f"\n🌀 The Young Chimera rears back — reality fractures around it!"
     ))
     if fury_triggered:
         print(wrap(
-            f"✨ PRIMORDIAL SURGE! (Fury Overload — ignores defence!)"
+            f"✨ CHAOS BREATH! (Fury Overload — ignores defence!)"
         ))
     else:
         print(wrap(
-            f"✨ PRIMORDIAL SURGE! ({charges_left} charge{'s' if charges_left != 1 else ''} remaining)"
+            f"✨ CHAOS BREATH! ({charges_left} charge{'s' if charges_left != 1 else ''} remaining)"
         ))
 
     # Full ATK roll as true damage — ignores defence entirely
+    # Elemental resistance still applies (chaos energy)
     b      = lvl_bonus(enemy)
     roll   = random.randint(enemy.min_atk + b, enemy.max_atk + b)
     actual = roll
+    mr = int(getattr(warrior, "magic_resistance", 0) or 0)
+    if mr > 0:
+        actual = max(1, actual - mr)
     warrior.hp = max(0, warrior.hp - actual)
     monster_math_breakdown(enemy, warrior, roll, actual,
-                           tag="Primordial Surge (true damage, ignores DEF)",
+                           tag="Chaos Breath (true damage, ignores DEF)",
                            ignore_defence=True)
 
     # Permanent stat degradation — 10% of current stats, min 1
@@ -1707,15 +1970,15 @@ def primordial_surge(enemy, warrior, fury_triggered=False):
     def_loss = max(1, int(warrior.defence * 0.10)) if warrior.defence > 0 else 0
     hp_loss  = max(1, int(warrior.max_hp  * 0.10))
 
-    if not hasattr(warrior, "primordial_atk_loss"):
-        warrior.primordial_atk_loss = 0      # tracks MIN atk loss (see note)
-        warrior.primordial_def_loss = 0
-        warrior.primordial_hp_loss  = 0
+    if not hasattr(warrior, "chaos_breath_atk_loss"):
+        warrior.chaos_breath_atk_loss = 0      # tracks MIN atk loss (see note)
+        warrior.chaos_breath_def_loss = 0
+        warrior.chaos_breath_hp_loss  = 0
     # v0.6.21: track max-atk loss separately. min and max floor against
     # different bounds (min floors at 1, max floors at the new min), so a
     # single atk tracker can't faithfully restore both.
-    if not hasattr(warrior, "primordial_max_atk_loss"):
-        warrior.primordial_max_atk_loss = 0
+    if not hasattr(warrior, "chaos_breath_max_atk_loss"):
+        warrior.chaos_breath_max_atk_loss = 0
 
     # v0.6.21 BUG FIX: record the ACTUAL floored delta, not the intended
     # loss. Previously we subtracted with a floor (max(1, ...)/max(0, ...))
@@ -1740,40 +2003,40 @@ def primordial_surge(enemy, warrior, fury_triggered=False):
     actual_def_loss     = _old_def     - warrior.defence
     actual_hp_loss      = _old_max_hp  - warrior.max_hp
 
-    warrior.primordial_atk_loss     += actual_min_atk_loss
-    warrior.primordial_max_atk_loss += actual_max_atk_loss
-    warrior.primordial_def_loss     += actual_def_loss
-    warrior.primordial_hp_loss      += actual_hp_loss
+    warrior.chaos_breath_atk_loss     += actual_min_atk_loss
+    warrior.chaos_breath_max_atk_loss += actual_max_atk_loss
+    warrior.chaos_breath_def_loss     += actual_def_loss
+    warrior.chaos_breath_hp_loss      += actual_hp_loss
 
     print(wrap(
-        f"💀 The primordial energy tears at your very essence! "
+        f"💀 The chaotic energy tears at your very essence! "
         f"ATK -{actual_max_atk_loss} (-10%), DEF -{actual_def_loss} (-10%), "
         f"Max HP -{actual_hp_loss} (-10%) (restores after combat)"
     ))
     show_health(warrior)
     return actual
 
-def _restore_primordial_stats(warrior):
-    """Restores stats degraded by Primordial Surge after combat ends.
+def _restore_chaos_breath_stats(warrior):
+    """Restores stats degraded by Chaos Breath after combat ends.
 
-    v0.6.21: min and max ATK are tracked separately (primordial_atk_loss =
-    min, primordial_max_atk_loss = max) because they floor against different
+    v0.6.21: min and max ATK are tracked separately (chaos_breath_atk_loss =
+    min, chaos_breath_max_atk_loss = max) because they floor against different
     bounds during degradation. Restoring them with one shared value would
     re-introduce the over/under-credit the actual-delta fix removed.
     """
-    min_atk = getattr(warrior, "primordial_atk_loss", 0)
-    max_atk = getattr(warrior, "primordial_max_atk_loss", 0)
-    df      = getattr(warrior, "primordial_def_loss", 0)
-    hp      = getattr(warrior, "primordial_hp_loss", 0)
+    min_atk = getattr(warrior, "chaos_breath_atk_loss", 0)
+    max_atk = getattr(warrior, "chaos_breath_max_atk_loss", 0)
+    df      = getattr(warrior, "chaos_breath_def_loss", 0)
+    hp      = getattr(warrior, "chaos_breath_hp_loss", 0)
     if min_atk > 0 or max_atk > 0 or df > 0 or hp > 0:
         warrior.min_atk += min_atk
         warrior.max_atk += max_atk
         warrior.defence += df
         warrior.max_hp  += hp
-        warrior.primordial_atk_loss     = 0
-        warrior.primordial_max_atk_loss = 0
-        warrior.primordial_def_loss     = 0
-        warrior.primordial_hp_loss      = 0
+        warrior.chaos_breath_atk_loss     = 0
+        warrior.chaos_breath_max_atk_loss = 0
+        warrior.chaos_breath_def_loss     = 0
+        warrior.chaos_breath_hp_loss      = 0
 
 def _restore_patronus_def(warrior):
     """Restores DEF reduced by Patronus Defence Break after combat ends."""
@@ -1830,7 +2093,7 @@ def chimera_special_dispatcher(enemy, warrior):
     """
     Each turn the chimera randomly picks one of its three move slots.
     Charge-based — tier1=5, tier2=4, tier3=3.
-    Primordial Surge is fury-only — NOT in this pool.
+    Chaos Breath is fury-only — NOT in this pool.
     Dispatcher decrements the right charge counter before calling the move.
     Borrowed moves' internal ap checks pass because ap=99 (dummy pool).
     Tier 3 borrowed moves get +1 turn duration via chimera_extra_turns flag.
@@ -1970,10 +2233,10 @@ class Young_Chimera(Monster):
         self.charges_tier1 = 6   # light moves — was 5
         self.charges_tier2 = 5   # mid moves — was 4
         self.charges_tier3 = 4   # heavy moves — was 3
-        # Primordial Surge is fury-only — no dispatcher charges needed
+        # Chaos Breath is fury-only — no dispatcher charges needed
 
         # Fury Charge — builds when player uses ranked skills (rank * 10 per use)
-        # At 100: warns player this turn, next turn fires basic ATK + Primordial Surge
+        # At 100: warns player this turn, next turn fires basic ATK + Chaos Breath
         self.chimera_fury_charge    = 0
         self.chimera_fury_overloading = False   # True = surge fires next turn
 
@@ -1983,7 +2246,7 @@ class Young_Chimera(Monster):
 
         # Cycle tracking
         self.combat_cycles = 0
-        self.primordial_triggered = False
+        self.chaos_breath_triggered = False
 
         # Announce loadout on spawn
         t1 = self.chimera_tier1.__name__.replace("_", " ").title()
@@ -1994,7 +2257,7 @@ class Young_Chimera(Monster):
             f"  🐾 It moves like something from the lower dens...\n"
             f"  🌀 Its body pulses with a darker energy...\n"
             f"  🏔️ A shadow of the deep wilds clings to it...\n"
-            f"  ✨ It radiates raw primordial power."
+            f"  ✨ It radiates raw chaotic energy."
         )
         if self.chimera_tier3 is psychic_shred:
             self.spawn_flavour += "\n  🩸 Its hide pulses with corrupted energy — your strikes feel dulled..."
@@ -2303,6 +2566,77 @@ def patronus_ai(enemy, warrior, turn_count):
 
     return "basic"
 
+
+def patronus_smite(enemy, warrior):
+    """
+    Patronus Smite — fires when smite_meter >= 100.
+    Defence-ignoring double strike + strips player DEF to 0 for 1 full turn.
+    Resets smite_meter to 0 after firing.
+    """
+    if enemy.name != "Patronus":
+        return 0
+
+    print(wrap(
+        "\n⚔️💥 PATRONUS RAISES HIS BLADE — DIVINE SMITE!"
+    ))
+
+    # Strip player DEF to 0
+    original_def = max(0, warrior.defence)
+    enemy.smite_def_stripped = original_def
+    enemy.smite_strip_active = True
+    warrior.defence = 0
+    if original_def > 0:
+        print(wrap(
+            f"  🛡️ Your defence crumbles under divine force! "
+            f"(-{original_def} DEF for this turn)"
+        ))
+
+    # v0.8.03: Single 1.5x strike — ignores defence (already stripped to 0).
+    # Previously a double strike, which front-loaded too much damage into
+    # one turn (51 damage observed on Warrior difficulty with War Cry active).
+    # 1.5x single hit is still the scariest move in the fight, but the DEF
+    # strip spreads the threat across two turns — player can react/heal.
+    roll = random.randint(enemy.min_atk, enemy.max_atk)
+    dealt = max(1, math.ceil(roll * 1.5))
+    # Elemental resistance applies (divine energy)
+    mr = int(getattr(warrior, "magic_resistance", 0) or 0)
+    if mr > 0:
+        dealt = max(1, dealt - mr)
+    warrior.hp = max(0, warrior.hp - dealt)
+    print(wrap(f"  ⚔️ Divine Smite: {dealt} damage!"))
+
+    # Reset meter
+    enemy.smite_meter = 0
+    enemy.smite_overloading = False
+    return dealt
+
+
+def _restore_patronus_smite_def(warrior):
+    """
+    Restore player DEF stripped by Patronus Smite.
+    Called at the start of the next player turn and as a safety catch-all
+    after combat ends (same pattern as _restore_patronus_def).
+    """
+    # Find the enemy — check common locations
+    import sys
+    _main = sys.modules.get("__main__")
+    # Look for any Patronus in scope with active smite strip
+    for attr_name in ("current_enemy", "_boss", "patronus"):
+        enemy = getattr(_main, attr_name, None)
+        if enemy and getattr(enemy, "smite_strip_active", False):
+            restored = enemy.smite_def_stripped
+            warrior.defence += restored
+            enemy.smite_strip_active = False
+            enemy.smite_def_stripped = 0
+            if restored > 0:
+                print(wrap(f"  🛡️ Your defence returns. (+{restored} DEF)"))
+            return
+
+    # Fallback: if we can't find the enemy but warrior has a flag
+    # This shouldn't happen but safety first
+    pass
+
+
 # ===============================
 # Patronus Class
 # ===============================
@@ -2377,6 +2711,14 @@ class Patronus(Monster):
 
         # Shield tracking — stripped when Death Defier fires
         self.shield_equipped = True
+
+        # Smite meter — charges from player ranked skills (rank × 10%)
+        # and passively +10% per Patronus turn. At 100% his next action
+        # becomes a defence-ignoring double strike that strips player DEF.
+        self.smite_meter = 0
+        self.smite_overloading = False
+        self.smite_def_stripped = 0       # how much DEF was stripped (for restore)
+        self.smite_strip_active = False   # True while DEF is zeroed
 
         self.spawn_flavour = (
             "An elderly man drops from the arena wall above you, landing in a "
@@ -2498,25 +2840,43 @@ def apply_level_scaling(monster: "Monster", tier: int):
     return monster
 
 # Main monster list used for both arena + debug
-# Weight value equals tier number directly: 1=T1, 2=T2, 3=T3, 4=T4
+# Format: (Class, tier_weight, difficulty_exclusive)
+#   tier_weight: 1=T1, 2=T2, 3=T3, 4=T4
+#   difficulty_exclusive: None = spawns on all difficulties,
+#                         "noob"/"warrior"/"champion" = only that difficulty
 MONSTER_TYPES = [
-    (Green_Slime, 1),
-    (Young_Goblin, 1),
-    (Imp, 1),
-    (Brittle_Skeleton, 1),
-    (Wolf_Pup, 1),
-    (Red_Slime, 2),
-    
-    (Noob_Ghost, 2),
-    (Wolf_Pup_Rider, 3),
-    (Javelina, 2),
-    (Goblin_Archer, 2),
-    (Dire_Wolf_Pup, 2),
-    (Hydra_Hatchling, 3),
-    (Flayed_One, 3),
-    (Drowned_One, 3),
-    (Goblin_Warrior, 3),
+    (Green_Slime, 1, None),
+    (Young_Goblin, 1, None),
+    (Imp, 1, None),
+    (Brittle_Skeleton, 1, None),
+    (Wolf_Pup, 1, None),
+    (Giant_Diseased_Rat, 1, "noob"),       # Noob-exclusive T1 alpha
+    # Halloween T1 alpha — injected conditionally below
+    (Red_Slime, 2, None),
+
+    (Noob_Ghost, 2, None),
+    (Wolf_Pup_Rider, 3, None),
+    (Javelina, 2, None),
+    (Goblin_Archer, 2, None),
+    (Dire_Wolf_Pup, 2, None),
+    (Hydra_Hatchling, 3, None),
+    (Flayed_One, 3, None),
+    (Drowned_One, 3, None),
+    (Goblin_Warrior, 3, None),
 ]
+
+# ---------- Seasonal monster injection ----------
+# Halloween monsters are added to the pool only during October.
+# They sit alongside the regular roster (not replacing), adding
+# variety to encounters during the seasonal window.
+try:
+    from collectibles import Giant_Animated_Jack_O_Lantern, The_Trickster, Female_Werewolf, is_october
+    if is_october():
+        MONSTER_TYPES.append((Giant_Animated_Jack_O_Lantern, 1, None))
+        MONSTER_TYPES.append((The_Trickster, 2, None))
+        MONSTER_TYPES.append((Female_Werewolf, 3, None))
+except ImportError:
+    pass  # collectibles not available — skip silently
 
 # ---------- Tier helpers ----------
 def weight_to_tier(weight):
@@ -2531,7 +2891,16 @@ def weight_to_tier(weight):
     return 1  # fallback — unknown weight treated as tier 1
 
 def get_monsters_by_tier(tier):
-    return [cls for cls, weight in MONSTER_TYPES if weight_to_tier(weight) == tier]
+    """Return monster classes for a tier, filtered by current difficulty.
+    Difficulty-exclusive monsters only appear on their assigned difficulty."""
+    import sys
+    main = sys.modules.get("__main__")
+    diff = getattr(main, "DIFFICULTY", "warrior") if main else "warrior"
+    return [
+        cls for cls, weight, excl in MONSTER_TYPES
+        if weight_to_tier(weight) == tier
+        and (excl is None or excl == diff)
+    ]
 
 def random_encounter_by_tier(tier, round_num):
     pool = get_monsters_by_tier(tier)
@@ -2582,7 +2951,7 @@ def pick_tier_from_weights(weight_map):
 
 def get_round_tier(round_num):
     if round_num == 1:
-        return pick_tier_from_weights({1: 0.8, 2: 0.2})
+        return pick_tier_from_weights({1: 0.6, 2: 0.4})
     if round_num == 2:
         return pick_tier_from_weights({1: 0.4, 2: 0.6})
     if round_num == 3:
@@ -2622,6 +2991,36 @@ def apply_difficulty_scaling(monster):
 
 
 def select_arena_enemy(round_num):
+    # ── Halloween Tournament Mode (debug) ──
+    # When the flag is set, pull exclusively from Halloween monsters
+    # instead of the regular tier pool. Round 5 still uses Fallen boss.
+    import sys
+    _main = sys.modules.get("__main__")
+    _warrior = getattr(_main, "GAME_WARRIOR", None) if _main else None
+    if _warrior and getattr(_warrior, "halloween_tournament", False):
+        try:
+            from collectibles import (Giant_Animated_Jack_O_Lantern,
+                                       The_Trickster, Female_Werewolf)
+            tier = get_round_tier(round_num)
+            if tier == 4:
+                return random_tier4_boss()
+            # Map tiers to Halloween monsters
+            halloween_pool = {
+                1: Giant_Animated_Jack_O_Lantern,
+                2: The_Trickster,
+                3: Female_Werewolf,
+            }
+            cls = halloween_pool.get(tier, Giant_Animated_Jack_O_Lantern)
+            enemy = cls()
+            enemy.tier = tier
+            lvl = monster_level_for_round(tier, round_num)
+            enemy.level = lvl
+            enemy.variant_title = title_for_level(lvl)
+            apply_level_scaling(enemy, tier)
+            return apply_difficulty_scaling(enemy)
+        except ImportError:
+            pass  # fall through to normal selection
+
     tier = get_round_tier(round_num)
     if tier == 4:
         return random_tier4_boss()
@@ -2635,7 +3034,7 @@ def random_encounter():
     Legacy debug encounter using the raw weighted list.
     Great for testing new monsters quickly.
     """
-    types, weights = zip(*MONSTER_TYPES)
+    types, weights, _ = zip(*MONSTER_TYPES)
     chosen_cls = random.choices(types, weights=weights, k=1)[0]
     return chosen_cls()
 

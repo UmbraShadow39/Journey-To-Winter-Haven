@@ -60,7 +60,7 @@ def get_name_input(prompt="\nWhat is your name, adventurer?\n> ", default="Umbra
     try:
         from better_profanity import profanity as _profanity
         _profanity_available = True
-    except ImportError:
+    except (ImportError, Exception):
         _profanity_available = False
 
     while True:
@@ -195,6 +195,96 @@ def nob_interlude_scene(warrior):
             "Nob crosses his arms and looks you up and down. "
             "'I don't see why you ran from Bo — you've been dominating out there.' "
             "He lets out a short laugh. 'Maybe you're smarter than you look. Or just lucky.'"
+        ))
+    elif "nob_submit_hit" in warrior.story_flags:
+        print(wrap(
+            "Nob looks at you with something that might be respect. "
+            "'You hit me when I told you to. And you've been hitting everything else since. "
+            "Use my training out there — don't waste what I gave you.'"
+        ))
+    elif "nob_submit_refrain" in warrior.story_flags:
+        print(wrap(
+            "Nob grunts. "
+            "'You wouldn't hit me when you had the chance. I placed a bet against you "
+            "after that.' He pauses. 'You've been fighting well enough in the arena "
+            "to make me nervous about my gold. Maybe you just needed something uglier "
+            "than me to swing at.'"
+        ))
+    elif "nob_submit_cower" in warrior.story_flags:
+        print(wrap(
+            "Nob grunts. "
+            "'You cowered like a pup when I roared at you. I placed a bet against you "
+            "right after that.' He shakes his head. 'But here you are, still breathing. "
+            "Don't make me lose my gold out there.'"
+        ))
+    elif "nob_outran_trainer" in warrior.story_flags:
+        print(wrap(
+            "Nob crosses his arms and almost smiles. "
+            "'You outran me. I don't forget that easily. "
+            "Bo wasn't exaggerating — you've got real speed. "
+            "Now let's see if you can fight as fast as you run.'"
+        ))
+    elif "nob_forest_runner" in warrior.story_flags:
+        print(wrap(
+            "Nob looks you over, almost impressed. "
+            "'Bo tells me you nearly outran him in the dark. "
+            "That kind of adrenaline can't be taught. "
+            "Speed like that will definitely help you in the arena — "
+            "if you can learn when to stop running and start fighting.'"
+        ))
+    elif "nob_forest_brave" in warrior.story_flags:
+        print(wrap(
+            "Nob looks you over with a hint of respect. "
+            "'Bo tells me you broke his hold. Not many can do that. "
+            "Most creatures freeze up and never move again.' "
+            "He cracks his knuckles. 'Let's see if that willpower "
+            "carries over to the arena.'"
+        ))
+    elif "nob_forest_captured" in warrior.story_flags:
+        print(wrap(
+            "Nob shrugs. "
+            "'Bo says you tried to break his hold and failed. "
+            "Can't fault you for trying, I suppose. "
+            "But trying isn't enough in the arena — you either "
+            "break through or you break.'"
+        ))
+    elif "nob_forest_caught" in warrior.story_flags:
+        print(wrap(
+            "Nob grunts. "
+            "'You ran when I told you to. That's something. "
+            "But I caught you without breaking a sweat. "
+            "You'll need more than speed to survive out there.'"
+        ))
+    elif "nob_forest_defiant" in warrior.story_flags:
+        print(wrap(
+            "Nob stares at you. "
+            "'You refused to run when I told you to. Stubborn. "
+            "Stubborn gets you killed in the arena — or it keeps you alive. "
+            "I haven't decided which one you are yet.'"
+        ))
+    elif "bo_stayed_fought_nob" in warrior.story_flags:
+        print(wrap(
+            "Nob steps over to you, arms crossed. "
+            "'You didn't want any part of this. But when I put you "
+            "on the spot, you threw a punch.' He almost grins. "
+            "'That tells me more than you think.'"
+        ))
+    elif "bo_stayed_refused_nob" in warrior.story_flags:
+        print(wrap(
+            "Nob doesn't even look at you."
+        ))
+    elif "nob_submit_cower" in warrior.story_flags:
+        print(wrap(
+            "Nob steps over to you, arms crossed. "
+            "'You didn't try when Bo found you. You didn't try when I "
+            "gave you a second chance.' He pauses. 'The arena doesn't "
+            "care about second chances. Whatever you've got left — use it.'"
+        ))
+    elif "warrior_arena_submit" in warrior.story_flags:
+        print(wrap(
+            "Nob steps over to you, arms crossed. "
+            "'You submitted without a fight. I remember that. "
+            "But the arena has a way of finding what's inside you. Let's see what's left.'"
         ))
     else:
         print(wrap(
@@ -333,6 +423,7 @@ def arena_quarters_interlude(warrior):
     merchant_stock = None     # holds the merchant's stock across revisits within this interlude
     crafter_stock = None      # v0.6.16: same pattern for crafter stock
     talked_bo = False
+    talked_tom = False
 
     while True:
         clear_screen()
@@ -359,6 +450,9 @@ def arena_quarters_interlude(warrior):
         _stone = _stone_usable(warrior)
         if _stone:
             print(f"14) Use Waterlogged Stone ({_stone.stone_charges}/{_stone.stone_max_charges} charges) — restore AP")
+        from collectibles import is_october
+        if is_october() or getattr(warrior, "halloween_candy", 0) > 0:
+            print("H) 🎃 Visit Tom\'s Emporium of Darkness")
         print("15) Rest until you’re called")
 
         raw = input("\nChoose: ")
@@ -453,18 +547,26 @@ def arena_quarters_interlude(warrior):
 
         elif choice == "10":
             clear_screen()
-            # TODO: add hooded figure dialogue here
             if not talked_hooded:
                 talked_hooded = True
-                print(wrap(
-    "The hooded figure studies you intently. "
-    "You feel as though a choice has already been seen — "
-    "even if you have not yet made it."
-))
+                if _get_gw().sex == "male":
+                    print(wrap(
+                        "The hooded figure studies you intently. "
+                        "'I wonder what choice you will make,' the mysterious figure whispers. "
+                        "Her angelic voice soothes your body and soul. You wonder who she is."
+                    ))
+                else:
+                    print(wrap(
+                        "The hooded figure glances at you. His golden eyes are both powerful and kind. "
+                        "You struggle to hold his gaze. His eyes seem to cut through all your barriers. "
+                        "He is reading you like an open book. You feel a strange connection to him."
+                    ))
 
             else:
-                print(wrap("The hooded figure remains still, lost in quiet contemplation."
-                ))
+                if _get_gw().sex == "male":
+                    print(wrap("The hooded figure remains still, her presence calm and otherworldly."))
+                else:
+                    print(wrap("The hooded figure remains still, his golden eyes watching from beneath the hood."))
             space(2)
             continue_text()
 
@@ -493,6 +595,16 @@ def arena_quarters_interlude(warrior):
             if _stone_usable(warrior):
                 use_waterlogged_stone(warrior)
                 input("\nPress Enter...")
+            else:
+                print("Invalid choice.\n")
+
+        elif choice.lower() == "h":
+            from collectibles import is_october, halloween_vendor_scene
+            if is_october() or getattr(warrior, "halloween_candy", 0) > 0:
+                clear_screen()
+                halloween_vendor_scene(warrior, first_visit=not talked_tom)
+                talked_tom = True
+                space(2)
             else:
                 print("Invalid choice.\n")
 
@@ -534,11 +646,62 @@ def arena_quarters_interlude(warrior):
 
 
 def simple_trainer_reaction(warrior):
-    """Very simple trainer reaction based on 1–2 story flags."""
+    """Trainer reaction based on story flags — checks most specific first."""
 
     if "warrior_arena_escape" in warrior.story_flags:
         print(wrap("I heard you tried to run. Hah."))
-        print(wrap("At least you made them work for it. Use that fire out there."))
+        print(wrap("At least you made Bo work for it. Use that fire out there."))
+        return
+
+    if "nob_submit_hit" in warrior.story_flags:
+        print(wrap("You hit me when I told you to. That took guts."))
+        print(wrap("Use my training out there. Make it count."))
+        return
+
+    if "nob_submit_refrain" in warrior.story_flags:
+        print(wrap("You wouldn't swing when I told you to. I'm placing a bet against you."))
+        print(wrap("The arena won't give you that option. Swing first or don't swing at all."))
+        return
+
+    if "broke_bo_hold" in warrior.story_flags:
+        # Broke Bo's hold — the hardest check
+        print(wrap(
+            "\"Your mental fortitude is impressive,\" Nob says. "
+            "\"Focus on your physical performance out there.\""
+        ))
+        return
+
+    if "nob_forest_brave" in warrior.story_flags:
+        # Failed Bo but broke Nob's weaker hold
+        print(wrap(
+            "\"You have some room to grow,\" Nob says, "
+            "\"but you definitely have some potential.\""
+        ))
+        return
+
+    if "nob_forest_captured" in warrior.story_flags:
+        # Failed both holds but tried
+        print(wrap(
+            "\"You may be weak,\" Nob says, "
+            "\"but at least you don't give up.\""
+        ))
+        return
+
+    if "bo_stayed_fought_nob" in warrior.story_flags:
+        # Stayed with Bo, refused tournament, but fought Nob in training
+        print(wrap(
+            "\"You didn't want to be here,\" Nob says. "
+            "\"But you swung when it mattered. Hold onto that.\""
+        ))
+        return
+
+    if "bo_stayed_refused_nob" in warrior.story_flags:
+        # Stayed with Bo, refused tournament, refused Nob — no acknowledgment
+        return
+
+    if "nob_submit_cower" in warrior.story_flags:
+        # Refused to even try
+        print(wrap("Nob grunts, barely acknowledging your presence."))
         return
 
     if "warrior_arena_submit" in warrior.story_flags:
@@ -570,35 +733,36 @@ def trainer_stat_point_scene(warrior):
 
     already_trained = "warrior_trained_by_nob" in warrior.story_flags
 
-    # 👀 React based on how you got here (ONLY if you haven't met Nob already)
-    if "trainer_intro_arena" not in warrior.trainer_seen and not already_trained:
-        simple_trainer_reaction(warrior)
+    # Path-specific dialogue always fires -- Nob reacts to HOW you arrived
+    simple_trainer_reaction(warrior)
+    space()
+    continue_text()
 
     space()
     time.sleep(2)
 
     # If you already did the Nob training scene, don't "double-dip" rewards
-    
-
-
     if already_trained:
-        print(wrap(
-            "Nob’s eyes briten slightly as you approach the arena. You did your training now use your new skills.", WIDTH))
-        space()
-        continue_text()
-
         # No new points granted here.
         spend_points_menu(warrior)
         space()
         return
 
-    # Otherwise, this is your one-time pre-gate boost
+    # Escape path — Nob already reacted above, just award points
+    if "warrior_arena_escape" in warrior.story_flags:
+        warrior.stat_points += 1
+        warrior.skill_points += 1
+        print(wrap("✨ You gain 1 stat point AND 1 skill point to spend before the tournament begins."))
+        space()
+        continue_text()
+        spend_points_menu(warrior)
+        space()
+        return
+
+    # Catch-all for paths not yet flagged (Dark Forest, etc.)
     print(wrap(
         "He studies you for a long moment, then grunts. "
         "'Fine. You've earned one last adjustment before you go out there.'"
-    ))
-    print(wrap(
-        "You feel a surge of potential — the trainer helps you sharpen one aspect of yourself."
     ))
     space()
     continue_text()
@@ -666,21 +830,29 @@ def ashenveil_prologue(warrior):
         )
         _get_gw().sex = "male" if sex_choice == "1" else "female"
 
-        # v0.7.18: attack-range flavor by sex — same AVERAGE damage either
-        # way (3.5), just different variance. Male is swingier (bigger
-        # crits, bigger whiffs), Female is more consistent. Neither is
-        # stronger overall — tune the two ranges freely, just keep their
-        # averages matched if you want to preserve that fairness.
-        if _get_gw().sex == "male":
-            _get_gw().min_atk = 1
-            _get_gw().max_atk = 6
-            stat_note = "ATK 1-6 (swingier)"
+        # v0.8.01: full stat profile by sex.
+        #   Male   — 30 HP, ATK 1-6 (swingier), 0 DEF, 3 AP
+        #            Raw power with high variance; no innate armour.
+        #   Female — 27 HP, ATK 2-4 (steadier), 1 DEF, 4 AP
+        #            Tighter damage, innate armour, extra action point.
+        # Neither is strictly stronger — Male has +3 HP and bigger spikes,
+        # Female has +1 DEF, +1 AP, and a narrower ATK floor.
+        w = _get_gw()
+        if w.sex == "male":
+            w.max_hp  = 30;  w.hp = 30
+            w.min_atk = 1;   w.max_atk = 6
+            w.defence = 0;   w.base_defence = 0
+            w.max_ap  = 3;   w.ap = 3
+            stat_note = "30 HP · ATK 1-6 · 0 DEF · 3 AP"
         else:
-            _get_gw().min_atk = 2
-            _get_gw().max_atk = 5
-            stat_note = "ATK 2-5 (steadier)"
+            w.max_hp  = 27;  w.hp = 27
+            w.min_atk = 2;   w.max_atk = 4
+            w.defence = 1;   w.base_defence = 1
+            w.max_ap  = 4;   w.ap = 4
+            stat_note = "27 HP · ATK 2-4 · 1 DEF · 4 AP"
+        w.max_overheal = int(w.max_hp * 1.10)
 
-        print(f"\nPlaying as: {_get_gw().sex.title()}  ({stat_note})")
+        print(f"\nPlaying as: {w.sex.title()}  ({stat_note})")
         space()
         continue_text()
 
@@ -699,9 +871,9 @@ def ashenveil_prologue(warrior):
         WIDTH
     ))
     space()
-    child_word = "Daughter" if warrior.sex == "female" else "Son"
+    child_word = "Daughter" if _get_gw().sex == "female" else "Son"
     print(wrap(
-        f"You are {warrior.name}. Greenhorn rank, Ashen Vanguard. "
+        f"You are {_get_gw().name}. Greenhorn rank, Ashen Vanguard. "
         f"{child_word} of Aldric — A-rank adventurer, senior Vanguard member, and the man "
         "whose name people say when they want to explain what a real warrior looks like.",
         WIDTH
@@ -805,22 +977,11 @@ def ashenveil_prologue(warrior):
     ))
     space()
 
-    # Grant Frostpine Tonic — replaces the starting heal potion.
-    # The narrative justification: Elwyn presses this into your hand
-    # *instead of* whatever basic heal flask you'd have packed yourself.
-    # This is intentional design — keeps starting inventory at one consumable.
-    warrior.potions["heal"] = 0
-    warrior.potions["frostpine_tonic"] = 1
-    print(wrap(
-        "✨ Elwyn's Frostpine Tonic added to your inventory. "
-        "(Restores 40% HP, clears all status effects, and restores 2 AP. One use only.)",
-        WIDTH
-    ))
-    print(wrap(
-        "(It replaces the basic heal flask you'd packed for the trip.)",
-        WIDTH
-    ))
-    space()
+    # Grant starting consumable — seasonal-aware (v0.8.04).
+    # In August: Birthday Cake replaces the Frostpine Tonic.
+    # All other months: Frostpine Tonic as normal.
+    from collectibles import grant_seasonal_starting_item
+    grant_seasonal_starting_item(warrior)
 
     # Grant Walking Staff — the traveler's weapon carried the whole road.
     # Weaker than any arena drop (no procs, no element) but keeps early fights
@@ -1350,6 +1511,7 @@ def intro_story_inner(warrior):
         # --------------------------------------------
         if tournament_entrance == "2":
             warrior.arena_origin = "submitted"
+            warrior.story_flags.add("warrior_arena_submit")
             clear_screen()
             print(wrap(
                 "The beastman looks disappointed. \"I always prefer when they run,\" he mutters.",
@@ -1363,10 +1525,229 @@ def intro_story_inner(warrior):
 
             space()
             print(wrap(
-                "You are placed in a cell for the night. The next evening, you are led "
-                "into the arena as the crowd howls for blood.",
+                "The beastman ties your wrists and solemnly leads you toward Winter Haven. "
+                "A few miles later he veers off the main road and leads you down a hidden "
+                "passage underneath the town.",
                 WIDTH
             ))
+            space()
+            print(wrap(
+                "He knocks three times on a heavy iron door. It swings open and a grizzled, "
+                "scarred bear folk meets you on the other side.",
+                WIDTH
+            ))
+            space()
+            print(wrap(
+                "'This is Nob, our current Arena Trainer. Hopefully he can do something "
+                "with you.' The beastman shoves you forward and disappears back down the passage.",
+                WIDTH
+            ))
+            space()
+            continue_text()
+            clear_screen()
+
+            # --- Nob takes over ---
+            print(wrap(
+                "Nob looks you up and down without a word. He grabs you by the shoulder "
+                "and escorts you down a narrow corridor to a damp, rocky hole in the wall "
+                "barely large enough to lie down in. He shoves you inside and slams the "
+                "iron gate shut.",
+                WIDTH
+            ))
+            space()
+            print(wrap(
+                "'Sleep,' he grunts. The torch light retreats with his footsteps.",
+                WIDTH
+            ))
+            space()
+            continue_text()
+            clear_screen()
+
+            # --- Nob wakes you ---
+            print(wrap(
+                "A few hours later you are jolted awake by the sound of iron scraping "
+                "against stone. Nob stands over you, torch in hand.",
+                WIDTH
+            ))
+            space()
+            print(wrap(
+                "'Get up.' He drags you to your feet and plants himself directly in front "
+                "of you, close enough that you can smell the smoke on his fur.",
+                WIDTH
+            ))
+            space()
+            print(wrap(
+                "'Let's see if you are a coward or just adverse to conflict.'",
+                WIDTH
+            ))
+            space()
+            print(wrap(
+                "Nob roars directly in your face — a full, deafening, animalistic roar "
+                "that echoes off the stone walls.",
+                WIDTH
+            ))
+            space()
+
+            # --- CHOICE 1: Cower or Stand Firm ---
+            nob_roar = check(
+                "\nWhat do you do?\n"
+                "1) Cower\n"
+                "2) Stand firm\n> ",
+                ["1", "2"]
+            )
+            clear_screen()
+
+            if nob_roar == "1":
+                # --- COWER PATH ---
+                warrior.story_flags.add("nob_submit_cower")
+                print(wrap(
+                    "You flinch and stumble backward, pressing yourself against the cold stone wall. "
+                    "Your hands come up instinctively to shield your face.",
+                    WIDTH
+                ))
+                space()
+                print(wrap(
+                    "Nob stares at you for a long, uncomfortable moment. Then he shakes his head.",
+                    WIDTH
+                ))
+                space()
+                print(wrap(
+                    "'Hopeless.' He turns and walks back toward the corridor. 'Back to your cell. "
+                    "Try not to embarrass yourself too badly out there.'",
+                    WIDTH
+                ))
+                space()
+                warrior.xp += 2
+                print("📖 +2 XP from Nob's assessment.")
+                warrior.story_flags.add("warrior_trained_by_nob")
+                warrior.trainer_seen.add("trainer_intro_arena")
+                space()
+                continue_text()
+                clear_screen()
+
+            else:
+                # --- STAND FIRM PATH ---
+                print(wrap(
+                    "You plant your feet and lock eyes with the bear folk. Your heart is "
+                    "hammering, but you don't move. You don't blink.",
+                    WIDTH
+                ))
+                space()
+                print(wrap(
+                    "Nob holds the stare for a long moment. Then the corner of his mouth "
+                    "twitches — not quite a smile.",
+                    WIDTH
+                ))
+                space()
+                print(wrap(
+                    "'Maybe you're not a coward after all.'",
+                    WIDTH
+                ))
+                space()
+                print(wrap(
+                    "He takes a step back and squares up, arms loose at his sides.",
+                    WIDTH
+                ))
+                space()
+                print(wrap(
+                    "'Hit me.'",
+                    WIDTH
+                ))
+                space()
+
+                # --- CHOICE 2: Hit Nob or Refrain ---
+                nob_hit = check(
+                    "\nWhat do you do?\n"
+                    "1) Hit Nob\n"
+                    "2) Refrain\n> ",
+                    ["1", "2"]
+                )
+                clear_screen()
+
+                if nob_hit == "1":
+                    # --- HIT NOB PATH ---
+                    warrior.story_flags.add("nob_submit_hit")
+                    print(wrap(
+                        "You swing at Nob with everything you have. His paw comes up and "
+                        "catches your fist like it's nothing — but he felt it. You can tell "
+                        "by the way his eyes narrow.",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap(
+                        "'OK. Maybe you are worth something.'",
+                        WIDTH
+                    ))
+                    space()
+                    warrior.min_atk += 1
+                    print("⚔️ Nob's approval: +1 min ATK")
+                    space()
+                    print(wrap(
+                        "Nob spends the next few hours running you through basic combat drills — "
+                        "footwork, how to throw your weight behind a punch, where to aim when "
+                        "something bigger than you is trying to kill you. He is not gentle, "
+                        "but he is thorough.",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap(
+                        "'That's enough. Back to your cell.' Nob escorts you back to the damp "
+                        "hole and locks the gate. 'Rest. You fight tonight.'",
+                        WIDTH
+                    ))
+                    space()
+                    warrior.xp += 2
+                    warrior.stat_points += 1
+                    warrior.skill_points += 1
+                    print("📖 +2 XP from Nob's training.")
+                    print("✨ +1 stat point, +1 skill point from Nob's drills.")
+                    warrior.story_flags.add("warrior_trained_by_nob")
+                    warrior.trainer_seen.add("trainer_intro_arena")
+                    space()
+                    continue_text()
+                    clear_screen()
+
+                else:
+                    # --- REFRAIN PATH ---
+                    warrior.story_flags.add("nob_submit_refrain")
+                    print(wrap(
+                        "You hold your ground but keep your hands at your sides. You don't swing.",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap(
+                        "Nob watches you for a moment, then drops his arms.",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap(
+                        "'That's unfortunate. You stood your ground, I'll give you that. "
+                        "But if you won't hit when you have the chance, you will probably "
+                        "die in that arena.'",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap(
+                        "He walks you back to your cell without another word.",
+                        WIDTH
+                    ))
+                    space()
+                    warrior.xp += 2
+                    print("📖 +2 XP from Nob's assessment.")
+                    warrior.story_flags.add("warrior_trained_by_nob")
+                    warrior.trainer_seen.add("trainer_intro_arena")
+                    space()
+                    continue_text()
+                    clear_screen()
+
+            # --- Common submit ending: led to arena ---
+            print(wrap(
+                "Night falls. The iron gate screeches open. Orc guards haul you out of "
+                "your cell and march you down a coarse stone hallway toward the sound "
+                "of a roaring crowd.",
+                WIDTH
+            ))
+            space()
             continue_text()
             clear_screen()
             arena_battle(_get_gw())
@@ -1376,15 +1757,18 @@ def intro_story_inner(warrior):
     # BRANCH: NO WINTER HAVEN LORE (DARK FOREST PATH)
     # ============================================================
     if winter_heaven_info == "n":
+        warrior.story_flags.add("skipped_winter_haven_lore")
         clear_screen()
         print(wrap(
             "You trip on a cleverly camouflaged rock and your torch flies from your hand, "
-            "landing in a nearby mountain river and sputtering out.",
+            "landing in a nearby mountain river. The splash echoes through the trees.",
             WIDTH
         ))
         print(wrap(
-            "The forest is swallowed by darkness. The canopy above blocks out the night sky, "
-            "and the silence feels oppressive.",
+            "For a moment, only the faint gurgle of the river fills the silence. "
+            "Then the darkness thickens — not gradually, but all at once, as if "
+            "something swallowed the last trace of light. Even the stars above the "
+            "canopy vanish. The air grows heavy and still. Something is very wrong.",
             WIDTH
         ))
         continue_text()
@@ -1437,15 +1821,18 @@ def intro_story_inner(warrior):
             space()
             print(wrap(
                 "As you lie down, you hear distant, heavy footsteps. "
-                "Fear slowly creeps into your mind. Your adrenaline rises "
-                "as the footsteps grow closer.",
+                "Your body reacts before your mind does — muscles tense, breathing shallow, "
+                "every instinct screaming at you to move. The footsteps grow closer. "
+                "Deliberate. Unhurried. Whatever is out there isn't lost — it knows "
+                "exactly where you are.",
                 WIDTH
             ))
 
             footsteps_choice = check(
                 wrap(
                     "What do you do?\n"
-                    "Type '(1' to call out, or '(2' to stay perfectly still.\n> ",
+                    "Type '1' to whisper 'Who is there?',\n"
+                    "or '2' to remain silent and motionless.\n> ",
                     WIDTH
                 ),
                 ["1", "2"]
@@ -1457,14 +1844,14 @@ def intro_story_inner(warrior):
             if footsteps_choice == "1":
                 clear_screen()
                 print(wrap(
-                    "You call out into the darkness, \"Hello? Is someone there?\"",
+                    "Your voice, a whisper. 'Who... who is there?'",
                     WIDTH
                 ))
                 continue_text()
                
 
                 print(wrap(
-                    "A deep, animalistic voice responds, \"Who goes there?\"",
+                    "A deep, predatory voice responds, 'Yes, Terran.'",
                     WIDTH
                 ))
                 if _get_gw().name == "warrior":
@@ -1505,7 +1892,7 @@ def intro_story_inner(warrior):
 
                     space()
                     print(wrap(
-                        "Your panic gives you unnatural speed. For a moment, it feels like you're gaining ground.",
+                        "The adrenaline coursing through your body, fueled by sheer panic, gives you the edge. You're breaking away.",
                         WIDTH
                     ))
                     print(wrap(
@@ -1583,8 +1970,10 @@ def intro_story_inner(warrior):
 
                         bo_questions = check(
                             wrap(
-                                "Bo asks if you have any questions. Type '(1' to ask about essences, or '(2' to ask what happens if you win.\n> " \
-                                "or '3(' to continue on)",
+                                "Bo asks if you have any questions.\n"
+                                "Type '1' to ask about essences,\n"
+                                "'2' to ask what happens if you win,\n"
+                                "or '3' to continue on.\n> ",
                                 WIDTH
                             ),
                             ["1", "2", "3"]
@@ -1613,16 +2002,210 @@ def intro_story_inner(warrior):
                     space()
                     print(wrap(
                         "Soon after, you are shackled and escorted to a fortified arena. "
-                        "The crowd's distant roar vibrates through the stone beneath your feet. "
-                        "You rest for a few hours and are violently woken up by a scarred, battle-hardened beast folk named Nob. " \
-                        "'Get up,' he growls, 'I'm told you're fast — let's see how fast you truly are.' Nob spends the next few hours having you run sprints." \
-                        " After Nob seems content with your progress he takes you back to your cell. 'Rest — you're going to need it,' he mumbles.",
+                        "The crowd's distant roar vibrates through the stone beneath your feet.",
                         WIDTH
                     ))
+                    space()
+                    print(wrap(
+                        "You rest for a few hours and are violently woken up by a scarred, "
+                        "battle-hardened beast folk named Nob.",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap(
+                        "'Get up,' he growls. He drags you out of your cell and into a walled "
+                        "training field. The stone walls are too high to climb, the gate behind "
+                        "you already shut.",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap(
+                        "'I'm told you're fast. Let's see how fast you truly are.' "
+                        "Nob squares up, eyes locked on you.",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap("'Run.'", WIDTH))
+
                     continue_text()
                     clear_screen()
-                    arena_battle(_get_gw())
-                    return
+
+                    nob_run_choice = check(
+                        wrap(
+                            "\nWhat do you do?\n"
+                            "Type '1' to run,\n"
+                            "or '2' to stay put.\n> ",
+                            WIDTH
+                        ),
+                        ["1", "2"]
+                    )
+
+                    # --- STAY PUT (refuse to run) ---
+                    if nob_run_choice == "2":
+                        clear_screen()
+                        warrior.story_flags.add("nob_forest_defiant")
+                        warrior.story_flags.add("warrior_trained_by_nob")
+                        warrior.trainer_seen.add("trainer_intro_arena")
+
+                        nob_shove_damage = random.randint(1, 3)
+                        _get_gw().hp = max(0, _get_gw().hp - nob_shove_damage)
+
+                        print(wrap(
+                            "You stand your ground and stare back at Nob. You're done being "
+                            "told what to do.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "Nob's eyes narrow. In one swift motion he shoves you hard to the "
+                            "ground. Dust kicks up around you.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            f"You take {nob_shove_damage} damage from the impact.",
+                            WIDTH
+                        ))
+                        print(f"You have {_get_gw().hp} HP remaining.")
+                        space()
+                        print(wrap(
+                            "'Hopeless,' Nob growls. 'You won't survive the tournament.'",
+                            WIDTH
+                        ))
+                        space()
+                        warrior.xp += 3
+                        print("📖 +3 XP from Nob's assessment.")
+                        space()
+                        print(wrap(
+                            "Nob grabs you by the collar and drags you back to your cell. "
+                            "'Rest — you're going to need it,' he mutters.",
+                            WIDTH
+                        ))
+                        continue_text()
+                        clear_screen()
+                        arena_battle(_get_gw())
+                        return
+
+                    # --- RUN ---
+                    if nob_run_choice == "1":
+                        clear_screen()
+                        warrior.story_flags.add("warrior_trained_by_nob")
+                        warrior.trainer_seen.add("trainer_intro_arena")
+
+                        print(wrap(
+                            "You take off. Your legs burn but the adrenaline is already "
+                            "familiar — the same fire that carried you through the forest. "
+                            "Behind you, Nob gives chase.",
+                            WIDTH
+                        ))
+                        space()
+
+                        # Weighted roll: 1-25 outrun, 26-75 keeps pace, 76-100 overwhelmed
+                        nob_speed_roll = random.randint(1, 100)
+
+                        # --- OUTRUN NOB (1-25) ---
+                        if nob_speed_roll <= 25:
+                            warrior.story_flags.add("nob_outran_trainer")
+                            print(wrap(
+                                "You push harder. The wall is coming up fast but you cut left, "
+                                "then right — Nob's heavy frame can't match your agility. "
+                                "You hear his footsteps falling behind. You're pulling away.",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "Nob slows to a stop. You circle back, breathing hard. "
+                                "He stares at you for a long moment.",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "'Not bad. Not bad at all.' A rare grin crosses his scarred face. "
+                                "'You have potential. Bo wasn't exaggerating.'",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "Nob reaches into a pouch on his belt and pulls out a small, "
+                                "dark vial. 'My own recipe. Save it for when it matters.'",
+                                WIDTH
+                            ))
+                            space()
+                            _get_gw().potions["nobs_secret_sauce"] = _get_gw().potions.get("nobs_secret_sauce", 0) + 1
+                            print("🧪 Received: Nob's Secret Sauce!")
+                            print("   (Double attack + 15% ATK, +1 min ATK, +1 DEF, +1 AP for 2 turns)")
+                            warrior.xp += 5
+                            warrior.stat_points += 1
+                            warrior.skill_points += 1
+                            print("✨ +1 stat point, +1 skill point from Nob's training.")
+                            print("📖 +5 XP from Nob's training.")
+
+                        # --- KEEPS PACE (26-75) ---
+                        elif nob_speed_roll <= 75:
+                            warrior.story_flags.add("nob_forest_runner")
+                            print(wrap(
+                                "You push harder, cutting across the field. Nob matches you "
+                                "stride for stride — impossibly fast for his size. Neither of "
+                                "you pulls ahead.",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "After several laps Nob raises a paw and calls it off. "
+                                "You both stand there, breathing hard.",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "'You're quick,' Nob says. 'Quick enough to stay alive, maybe.'",
+                                WIDTH
+                            ))
+                            space()
+                            warrior.stat_points += 1
+                            warrior.skill_points += 1
+                            warrior.xp += 4
+                            print("✨ +1 stat point, +1 skill point from Nob's training.")
+                            print("📖 +4 XP from Nob's training.")
+
+                        # --- OVERWHELMED (76-100) ---
+                        else:
+                            warrior.story_flags.add("nob_forest_caught")
+                            nob_tackle_damage = random.randint(1, 3)
+                            _get_gw().hp = max(0, _get_gw().hp - nob_tackle_damage)
+                            print(wrap(
+                                "You push as hard as you can, but Nob closes the gap like "
+                                "it's nothing. A massive paw slams into your back and you "
+                                "hit the dirt hard.",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                f"You take {nob_tackle_damage} damage from the tackle.",
+                                WIDTH
+                            ))
+                            print(f"You have {_get_gw().hp} HP remaining.")
+                            space()
+                            print(wrap(
+                                "'Fast for a Terran,' Nob grunts. 'Not fast enough.'",
+                                WIDTH
+                            ))
+                            space()
+                            warrior.stat_points += 1
+                            warrior.skill_points += 1
+                            warrior.xp += 3
+                            print("✨ +1 stat point, +1 skill point from Nob's training.")
+                            print("📖 +3 XP from Nob's training.")
+
+                        space()
+                        print(wrap(
+                            "Nob escorts you back to your cell. 'Rest — you're going to "
+                            "need it,' he mutters.",
+                            WIDTH
+                        ))
+                        continue_text()
+                        clear_screen()
+                        arena_battle(_get_gw())
+                        return
 
                 # STAY WITH BO
                 if fading_darkness == "2":
@@ -1642,42 +2225,957 @@ def intro_story_inner(warrior):
                     ))
                     print(wrap(
                         "He introduces himself as Bo and explains the basics of the tournament: "
-                        "four monsters, one human, and freedom as the prize.",
+                        "four monsters and one champion, one competitor, and freedom as the prize. "
+                        "What do you say? Are you going to be a willing participant?",
                         WIDTH
                     ))
-                    continue_text()
-                    clear_screen()
-                    arena_battle(_get_gw())
-                    return
+                    space()
+
+                    willing = check(
+                        "Type 'y' for yes, or 'n' for no.\n> ",
+                        ["y", "n"]
+                    )
+
+                    # ── YES — willing participant ──
+                    if willing == "y":
+                        warrior.story_flags.add("bo_stayed_willing")
+                        clear_screen()
+                        print(wrap(
+                            "Bo nods approvingly. \"All right. It's easier this way — "
+                            "for both of us.\"",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "He reaches into a leather pouch and produces a small vial "
+                            "of dark amber liquid. \"Drink this. Consider it a reward "
+                            "for not making me chase you.\"",
+                            WIDTH
+                        ))
+                        space()
+                        _get_gw().current_bonus_damage += 1
+                        print("⚔️ Bo hands you a Might Draught.")
+                        print(f"   +1 permanent bonus damage (Now {_get_gw().current_bonus_damage}).")
+                        space()
+                        print(wrap(
+                            "Bo binds your hands — loosely, almost as a formality — "
+                            "and escorts you through the dark forest toward Under-Haven.",
+                            WIDTH
+                        ))
+                        continue_text()
+                        clear_screen()
+
+                        print(wrap(
+                            "At the gates, a scarred beastman named Nob meets you "
+                            "with a scowl.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "\"This one came willingly,\" Bo says.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "Nob raises an eyebrow. \"Willingly? That's a first.\" "
+                            "He looks you over. \"We'll see how willing you are "
+                            "after the first round.\"",
+                            WIDTH
+                        ))
+                        space()
+                        warrior.xp += 3
+                        print("📖 +3 XP.")
+                        continue_text()
+                        clear_screen()
+
+                        print(wrap(
+                            "A group of orc guards arrive and escort you down a "
+                            "coarse stone hallway toward the sounds of a roaring crowd.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "At the arena entrance, Nob leans against the wall. "
+                            "He gives you a short nod.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "\"You have potential. Try not to die.\"",
+                            WIDTH
+                        ))
+                        continue_text()
+                        clear_screen()
+                        arena_battle(_get_gw())
+                        return
+
+                    # ── NO — unwilling participant ──
+                    if willing == "n":
+                        warrior.story_flags.add("bo_stayed_unwilling")
+                        clear_screen()
+                        print(wrap(
+                            "Bo sighs. \"Well, that's unfortunate. But it really "
+                            "isn't an option.\"",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "Before you can react, Bo grabs you by the arm and "
+                            "binds your hands with thick rope. He drags you through "
+                            "the dark forest without another word.",
+                            WIDTH
+                        ))
+                        continue_text()
+                        clear_screen()
+
+                        print(wrap(
+                            "A stone fortress emerges from the trees — Under-Haven. "
+                            "A scarred beastman named Nob meets you at the gate.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "\"This one didn't want to come,\" Bo grunts.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "Nob barely glances at you. \"They never do.\"",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "You are shoved into a holding cell. The stone is cold. "
+                            "The crowd's distant roar vibrates through the walls.",
+                            WIDTH
+                        ))
+                        continue_text()
+                        clear_screen()
+
+                        # ── Nob wakes you ──
+                        print(wrap(
+                            "A few hours later you are jolted awake by a heavy boot "
+                            "kicking the bars of your cell. Nob stands in the doorway.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "\"Get up,\" he growls. \"Bo says you don't want to "
+                            "participate. You know that's not an option.\"",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "He drags you out of the cell and escorts you to a "
+                            "walled training ground. The dirt is packed hard, "
+                            "stained dark in patches.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "Nob squares up and cracks his knuckles. "
+                            "\"Show me what you've got.\"",
+                            WIDTH
+                        ))
+                        space()
+
+                        nob_combat = check(
+                            "Type 'y' to fight Nob, or 'n' to refuse.\n> ",
+                            ["y", "n"]
+                        )
+
+                        # ── Player fights Nob ──
+                        if nob_combat == "y":
+                            warrior.story_flags.add("bo_stayed_fought_nob")
+                            clear_screen()
+                            print(wrap(
+                                "You throw everything you have into a swing. Nob "
+                                "catches it with one paw like he's swatting a fly.",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "\"So there is some fire in you,\" Nob says, almost "
+                                "smiling. \"Good. Let's see if we can fan it.\"",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "Nob spends the next hour running you through basic "
+                                "combat drills — footwork, guard positions, how to "
+                                "read an attack before it lands.",
+                                WIDTH
+                            ))
+                            space()
+                            _get_gw().max_atk += 1
+                            warrior.xp += 4
+                            print("⚔️ +1 Max Attack from Nob's training.")
+                            print(f"   ATK: {_get_gw().min_atk}-{_get_gw().max_atk}")
+                            print("📖 +4 XP.")
+                            continue_text()
+                            clear_screen()
+
+                            print(wrap(
+                                "A group of orc guards arrive and escort you down a "
+                                "coarse stone hallway toward the sounds of a "
+                                "roaring crowd.",
+                                WIDTH
+                            ))
+                            continue_text()
+                            clear_screen()
+                            arena_battle(_get_gw())
+                            return
+
+                        # ── Player refuses to fight Nob ──
+                        if nob_combat == "n":
+                            warrior.story_flags.add("bo_stayed_refused_nob")
+                            clear_screen()
+                            print(wrap(
+                                "Nob stares at you for a long moment.",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "\"Suit yourself. You're as good as dead.\"",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "He turns and walks away without another word. "
+                                "The guards drag you back to your cell.",
+                                WIDTH
+                            ))
+                            space()
+                            warrior.xp += 3
+                            warrior.score_multiplier_penalty = getattr(
+                                warrior, "score_multiplier_penalty", 0.0
+                            ) + 0.10
+                            print("📖 +3 XP.")
+                            print("📉 +0.10 score multiplier (hardship bonus).")
+                            continue_text()
+                            clear_screen()
+
+                            print(wrap(
+                                "A group of orc guards arrive and drag you down a "
+                                "coarse stone hallway toward the sounds of a "
+                                "roaring crowd.",
+                                WIDTH
+                            ))
+                            continue_text()
+                            clear_screen()
+                            arena_battle(_get_gw())
+                            return
 
             # STAY SILENT
             if footsteps_choice == "2":
                 clear_screen()
                 print(wrap(
-                    "You hold your breath and stay as still as possible. "
-                    "The footsteps stop just a few paces away.",
+                    "You hold your breath, praying that whatever is out there "
+                    "hasn't sensed you. The silence stretches — then breaks.",
                     WIDTH
                 ))
-                print(wrap(
-                    "A low growl rumbles in the darkness. \"I can smell you, human,\" "
-                    "a deep voice says. \"Hiding won't help.\"",
-                    WIDTH
-                ))
-
                 space()
                 print(wrap(
-                    "A moment later, a heavy hand grabs you by the collar and hoists you off the ground.",
+                    "A dark silhouette emerges from the treeline. Massive. "
+                    "Moving with a predator's patience. Something primordial "
+                    "echoes under its voice when it speaks.",
                     WIDTH
                 ))
+                space()
                 print(wrap(
-                    "\"Congratulations,\" the unseen creature chuckles. "
-                    "\"You've been drafted into our tournament.\"",
+                    "Your body stiffens. Not from fear — something deeper. "
+                    "Your muscles lock. You can't move.",
                     WIDTH
                 ))
                 continue_text()
                 clear_screen()
-                arena_battle(_get_gw())
-                return
+
+                print(wrap(
+                    "\"Terran,\" the voice rumbles. \"I sensed you long before "
+                    "you sensed me.\"",
+                    WIDTH
+                ))
+                space()
+
+                struggle_choice = check(
+                    wrap(
+                        "Do you try to break free?\n"
+                        "Type '1' to fight against the hold,\n"
+                        "or '2' to stay still.\n> ",
+                        WIDTH
+                    ),
+                    ["1", "2"]
+                )
+
+                # ── TRY TO BREAK FREE ──
+                if struggle_choice == "1":
+                    clear_screen()
+                    print(wrap(
+                        "Every fiber in your body screams against the invisible force. "
+                        "You grit your teeth and push.",
+                        WIDTH
+                    ))
+                    space()
+
+                    struggle_roll = random.randint(1, 100)
+
+                    # --- SUCCESS (1-33): broke the hold ---
+                    if struggle_roll <= 33:
+                        warrior.story_flags.add("nob_forest_brave")
+                        warrior.story_flags.add("broke_bo_hold")
+                        print(wrap(
+                            "Something gives. Your arm jerks forward — then your leg. "
+                            "The hold shatters like glass and you stumble free, gasping.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "A massive paw reaches out and grabs you by the shoulder "
+                            "before you can take a single step.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "\"Impressive, Terran,\" the creature says, and you hear "
+                            "something like genuine surprise in its voice. \"Most creatures "
+                            "can't break my hold. Maybe this isn't a waste of my time.\"",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "The creature snaps its fingers. The magical darkness lifts. "
+                            "Standing before you is a towering bearman — easily twice your "
+                            "height. He reaches into a leather pouch and hands you a small "
+                            "vial of glowing red liquid.",
+                            WIDTH
+                        ))
+                        space()
+                        _get_gw().max_rage += 1
+                        print("🔥 Bo hands you an Adrenaline Draught.")
+                        print("   +1 permanent Adrenaline Boost (bonus damage when wounded).")
+                        space()
+
+                        print(wrap(
+                            "\"My name is Boar. Most call me Bo. There is a local tournament "
+                            "and you have just been entered into it.\"",
+                            WIDTH
+                        ))
+                        if _get_gw().name == "warrior":
+                            _get_gw().name = get_name_input()
+                        continue_text()
+                        clear_screen()
+
+                        tournament_info = check(
+                            "\nWould you like to learn more about the tournament? (y/n)\n> ",
+                            ["y", "n"]
+                        )
+
+                        if tournament_info == "y":
+                            clear_screen()
+                            print(wrap(
+                                "\"Ah yes, the monster tournament,\" Bo says proudly. "
+                                "\"It's a training ground for our young who come of age. "
+                                "It gives them real combat experience. Since we are constantly "
+                                "being hunted by adventurers, we want our young to have the "
+                                "best chance of survival.\"",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "\"The tournament pits you against four monsters in solo combat. "
+                                "If you defeat all four you fight the champion, beat him and you win. "
+                                "Each monster you defeat rewards you with a monster essence. "
+                                "Turn in the essences, and you are set free.\"",
+                                WIDTH
+                            ))
+                            space()
+
+                            bo_questions = check(
+                                wrap(
+                                    "Bo asks if you have any questions.\n"
+                                    "Type '1' to ask about essences,\n"
+                                    "'2' to ask what happens if you win,\n"
+                                    "or '3' to continue on.\n> ",
+                                    WIDTH
+                                ),
+                                ["1", "2", "3"]
+                            )
+                            continue_text()
+                            clear_screen()
+                            if bo_questions == "1":
+                                clear_screen()
+                                print(wrap(
+                                    "\"Essences are fragments of a monster's soul,\" Bo explains. "
+                                    "\"With them, we can revive fallen monsters. The essences, "
+                                    "provided by the beast gods, provide us with a way to come back, "
+                                    "learn hard lessons, and still live to fight another day.\"",
+                                    WIDTH
+                                ))
+                            elif bo_questions == "2":
+                                clear_screen()
+                                print(wrap(
+                                    "\"If you win,\" Bo says, \"your memories of this place will be wiped, "
+                                    "and you'll be returned to where we found you. "
+                                    "You might be stronger, richer... but you won't remember why.\"",
+                                    WIDTH
+                                ))
+                            elif bo_questions == "3":
+                                print(wrap(
+                                    "Very well, it's just about time for you to meet "
+                                    "the Arena Trainer, Nob.",
+                                    WIDTH
+                                ))
+
+                    # --- FAIL (34-100): couldn't break the hold ---
+                    else:
+                        warrior.story_flags.add("nob_forest_captured")
+                        print(wrap(
+                            "You strain with everything you have. Your arms tremble, "
+                            "your jaw clenches — but the hold doesn't budge. Not even "
+                            "a flicker.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "The creature lets out a low, rumbling chuckle.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "\"At least you tried. I suppose that counts for something. "
+                            "Maybe you have a chance in this tournament.\"",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "The creature snaps its fingers. The magical darkness lifts. "
+                            "A towering bearman stands before you, arms folded.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "\"My name is Boar. Most call me Bo. There is a local tournament "
+                            "and you have just been entered into it.\"",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "Bo hands you a small potion.",
+                            WIDTH
+                        ))
+                        _get_gw().potions["ap"] += 1
+                        print("⚡ Received: Action Point Potion.")
+                        space()
+
+                        if _get_gw().name == "warrior":
+                            _get_gw().name = get_name_input()
+                        continue_text()
+                        clear_screen()
+
+                        tournament_info = check(
+                            "\nWould you like to learn more about the tournament? (y/n)\n> ",
+                            ["y", "n"]
+                        )
+
+                        if tournament_info == "y":
+                            clear_screen()
+                            print(wrap(
+                                "\"Ah yes, the monster tournament,\" Bo says proudly. "
+                                "\"It's a training ground for our young who come of age. "
+                                "It gives them real combat experience. Since we are constantly "
+                                "being hunted by adventurers, we want our young to have the "
+                                "best chance of survival.\"",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "\"The tournament pits you against four monsters in solo combat. "
+                                "If you defeat all four you fight the champion, beat him and you win. "
+                                "Each monster you defeat rewards you with a monster essence. "
+                                "Turn in the essences, and you are set free.\"",
+                                WIDTH
+                            ))
+                            space()
+
+                            bo_questions = check(
+                                wrap(
+                                    "Bo asks if you have any questions.\n"
+                                    "Type '1' to ask about essences,\n"
+                                    "'2' to ask what happens if you win,\n"
+                                    "or '3' to continue on.\n> ",
+                                    WIDTH
+                                ),
+                                ["1", "2", "3"]
+                            )
+                            continue_text()
+                            clear_screen()
+                            if bo_questions == "1":
+                                clear_screen()
+                                print(wrap(
+                                    "\"Essences are fragments of a monster's soul,\" Bo explains. "
+                                    "\"With them, we can revive fallen monsters. The essences, "
+                                    "provided by the beast gods, provide us with a way to come back, "
+                                    "learn hard lessons, and still live to fight another day.\"",
+                                    WIDTH
+                                ))
+                            elif bo_questions == "2":
+                                clear_screen()
+                                print(wrap(
+                                    "\"If you win,\" Bo says, \"your memories of this place will be wiped, "
+                                    "and you'll be returned to where we found you. "
+                                    "You might be stronger, richer... but you won't remember why.\"",
+                                    WIDTH
+                                ))
+                            elif bo_questions == "3":
+                                print(wrap(
+                                    "Very well, it's just about time for you to meet "
+                                    "the Arena Trainer, Nob.",
+                                    WIDTH
+                                ))
+
+                    # ── Shared escort to arena (both struggle outcomes) ──
+                    space()
+                    print(wrap(
+                        "Bo binds your hands with thick rope and escorts you through "
+                        "the dark forest. After what feels like hours, a stone fortress "
+                        "emerges from the trees — Under-Haven.",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap(
+                        "At the gates, a scarred, battle-hardened beastman named Nob "
+                        "meets you with a scowl.",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap(
+                        "Bo nods to Nob. \"This one held still in the dark. "
+                        "Tried to hide from me.\"",
+                        WIDTH
+                    ))
+                    space()
+
+                    if "nob_forest_brave" in warrior.story_flags:
+                        print(wrap(
+                            "\"But,\" Bo adds, \"it broke free of my hold. "
+                            "That doesn't happen often.\"",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "Nob raises an eyebrow. \"Is that so?\" He looks you over "
+                            "with something that might be interest. \"Mentally strong, "
+                            "then. Let's see if your body can keep up.\"",
+                            WIDTH
+                        ))
+                        continue_text()
+                        clear_screen()
+
+                        print(wrap(
+                            "Nob spends the next hour running you through basic combat "
+                            "drills — footwork, guard positions, how to read an attack "
+                            "before it lands. He doesn't go easy on you.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "\"You won't overpower anything in that arena,\" Nob says, "
+                            "resetting your stance for the third time. \"But if you can "
+                            "read them and react, you might survive long enough to "
+                            "figure out how to win.\"",
+                            WIDTH
+                        ))
+                        space()
+                        warrior.xp += 5
+                        
+                        print("📖 +5 XP from Nob's training.")
+                        
+                    elif "nob_forest_captured" in warrior.story_flags:
+                        print(wrap(
+                            "Nob grunts. \"Tried to fight the hold and failed?\" "
+                            "He looks you over, eyes narrowing. \"Could be weak. "
+                            "Could be that Bo's just that strong.\"",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "Nob steps closer. \"Only one way to find out.\"",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "He raises a paw and mutters something under his breath. "
+                            "A familiar pressure clamps down — but it's not the same. "
+                            "Bo's hold was iron. This one has seams. You can feel "
+                            "the edges where it doesn't quite grip.",
+                            WIDTH
+                        ))
+                        space()
+
+                        nob_retest = check(
+                            wrap(
+                                "Nob watches you. \"Break it.\"\n"
+                                "Type '1' to fight the hold,\n"
+                                "or '2' to refuse.\n> ",
+                                WIDTH
+                            ),
+                            ["1", "2"]
+                        )
+
+                        if nob_retest == "1":
+                            clear_screen()
+                            print(wrap(
+                                "You grit your teeth and push. The hold bends — "
+                                "you can feel it giving where Bo's never did.",
+                                WIDTH
+                            ))
+                            space()
+
+                            nob_retest_roll = random.randint(1, 100)
+
+                            if nob_retest_roll <= 75:
+                                warrior.story_flags.discard("nob_forest_captured")
+                                warrior.story_flags.add("nob_forest_brave")
+                                print(wrap(
+                                    "The hold snaps. Your arms swing free and you "
+                                    "stumble forward, chest heaving.",
+                                    WIDTH
+                                ))
+                                space()
+                                print(wrap(
+                                    "Nob nods slowly. \"So it was Bo, not you. "
+                                    "That's something I can work with.\"",
+                                    WIDTH
+                                ))
+                                space()
+                                print(wrap(
+                                    "He reaches into his belt pouch and produces a "
+                                    "small vial of shimmering violet liquid. "
+                                    "\"Drink this. The arena is full of things that "
+                                    "burn, poison, and rot. This'll help.\"",
+                                    WIDTH
+                                ))
+                                space()
+                                _get_gw().magic_resistance = getattr(_get_gw(), "magic_resistance", 0) + 1
+                                print("🔮 Nob hands you an Arcane Ward.")
+                                print(f"   +1 permanent Elemental Resistance (Now {_get_gw().magic_resistance}).")
+                                space()
+                                warrior.xp += 4
+                                print("📖 +4 XP from Nob's training.")
+
+                            else:
+                                print(wrap(
+                                    "You strain hard. Your arms tremble, your neck "
+                                    "burns — but the hold doesn't break. After a long "
+                                    "moment, Nob releases it with a wave of his paw.",
+                                    WIDTH
+                                ))
+                                space()
+                                print(wrap(
+                                    "\"Not strong enough yet,\" Nob says. \"But you "
+                                    "fought Bo's hold and mine. That's not nothing.\"",
+                                    WIDTH
+                                ))
+                                space()
+                                print(wrap(
+                                    "Nob spends the next hour drilling you through "
+                                    "basic combat stances — how to plant your feet, "
+                                    "how to guard your center, how to take a hit "
+                                    "without folding.",
+                                    WIDTH
+                                ))
+                                space()
+                                print(wrap(
+                                    "When he's done, he tosses you a healing potion. "
+                                    "\"You'll need it.\"",
+                                    WIDTH
+                                ))
+                                space()
+                                _get_gw().potions["heal"] += 1
+                                print("❤️ Received: Healing Potion.")
+                                space()
+                                warrior.xp += 3
+                                print("📖 +3 XP from Nob's training.")
+
+                        elif nob_retest == "2":
+                            warrior.story_flags.discard("nob_forest_captured")
+                            warrior.story_flags.add("nob_submit_cower")
+                            clear_screen()
+                            print(wrap(
+                                "You don't move. You don't even try.",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "Nob stares at you for a long moment. His expression "
+                                "shifts from disappointment to something colder.",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "\"You fought Bo's hold but won't fight mine?\" "
+                                "He shakes his head. \"Hopeless.\"",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "He turns away without another word. The cell door "
+                                "slams shut.",
+                                WIDTH
+                            ))
+                            space()
+                            warrior.xp += 2
+                            print("📖 +2 XP.")
+
+                        continue_text()
+                        clear_screen()
+
+                        print(wrap(
+                            "A group of orc guards arrive at your cell and drag you "
+                            "down the coarse stone hallway toward the sounds of a "
+                            "roaring crowd.",
+                            WIDTH
+                        ))
+                        continue_text()
+                        clear_screen()
+                        arena_battle(_get_gw())
+                        return
+
+                    continue_text()
+                    clear_screen()
+                    arena_battle(_get_gw())
+                    return
+
+                # ── REFUSE TO MOVE ──
+                if struggle_choice == "2":
+                    clear_screen()
+                    print(wrap(
+                        "You stay still. Whether it's the hold or your own fear, "
+                        "you don't fight it.",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap(
+                        "The creature waits. Seconds stretch into eternity.",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap(
+                        "\"Well, that's unfortunate,\" the voice says flatly. "
+                        "\"You'll be easy prey in this tournament.\"",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap(
+                        "The creature snaps its fingers. The magical darkness lifts. "
+                        "A towering bearman stands before you, arms folded, unimpressed.",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap(
+                        "Without another word, he binds your hands and drags you "
+                        "through the forest. You don't even learn his name.",
+                        WIDTH
+                    ))
+
+                    if _get_gw().name == "warrior":
+                        _get_gw().name = get_name_input()
+
+                    continue_text()
+                    clear_screen()
+
+                    # ── Nob's second-chance training ──
+                    print(wrap(
+                        "You are hauled to a stone fortress called Under-Haven. "
+                        "A scarred beastman named Nob meets you at the gate.",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap(
+                        "\"This one didn't even try,\" your captor grunts.",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap(
+                        "Nob barely glances at you. \"Then it'll be a short tournament.\"",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap(
+                        "You are shoved into a holding cell. The stone is cold. "
+                        "The crowd's distant roar vibrates through the walls.",
+                        WIDTH
+                    ))
+                    continue_text()
+                    clear_screen()
+
+                    print(wrap(
+                        "A few hours later, you are jolted awake by a heavy boot "
+                        "kicking the bars of your cell. Nob stands in the doorway, "
+                        "torch in hand.",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap(
+                        "\"Bo said you didn't even try to resist his hold,\" Nob says, "
+                        "stepping inside. \"Are you scared, or just not very mentally strong?\"",
+                        WIDTH
+                    ))
+                    space()
+                    print(wrap(
+                        "Before you can answer, Nob raises a paw and mutters something "
+                        "under his breath. A familiar pressure clamps down on your body — "
+                        "your muscles lock, your breath catches. It's the same hold, "
+                        "but weaker. You can feel the edges of it, the seams where it "
+                        "doesn't quite grip.",
+                        WIDTH
+                    ))
+                    space()
+
+                    nob_hold_choice = check(
+                        wrap(
+                            "Nob watches you. \"Try to break it.\"\n"
+                            "Type '1' to fight the hold,\n"
+                            "or '2' to refuse.\n> ",
+                            WIDTH
+                        ),
+                        ["1", "2"]
+                    )
+
+                    # ── Player tries to resist Nob's hold ──
+                    if nob_hold_choice == "1":
+                        clear_screen()
+                        print(wrap(
+                            "You grit your teeth and push against the invisible force. "
+                            "It's weaker than Bo's — you can feel it giving.",
+                            WIDTH
+                        ))
+                        space()
+
+                        nob_hold_roll = random.randint(1, 100)
+
+                        # --- SUCCESS (1-75): broke Nob's hold ---
+                        if nob_hold_roll <= 75:
+                            warrior.story_flags.add("nob_forest_brave")
+                            print(wrap(
+                                "The hold snaps. Your arms swing free and you stumble "
+                                "forward, chest heaving.",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "Nob nods slowly. \"So you're weak, but not defenseless. "
+                                "That's something I can work with.\"",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "He reaches into his belt pouch and produces a small "
+                                "vial of shimmering violet liquid. \"Drink this. The "
+                                "arena is full of things that burn, poison, and rot. "
+                                "This'll help.\"",
+                                WIDTH
+                            ))
+                            space()
+                            _get_gw().magic_resistance = getattr(_get_gw(), "magic_resistance", 0) + 1
+                            print("🔮 Nob hands you an Arcane Ward.")
+                            print(f"   +1 permanent Elemental Resistance (Now {_get_gw().magic_resistance}).")
+                            space()
+                            warrior.xp += 4
+                            print("📖 +4 XP from Nob's training.")
+
+                        # --- FAIL (76-100): couldn't break it ---
+                        else:
+                            warrior.story_flags.add("nob_forest_captured")
+                            print(wrap(
+                                "You strain hard. Your arms tremble, your neck burns — "
+                                "but the hold doesn't break. After a long moment, "
+                                "Nob releases it with a wave of his paw.",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "\"Not strong enough yet,\" Nob says. \"But you tried. "
+                                "That matters more than you think.\"",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "Nob spends the next hour drilling you through basic combat "
+                                "stances — how to plant your feet, how to guard your center, "
+                                "how to take a hit without folding.",
+                                WIDTH
+                            ))
+                            space()
+                            print(wrap(
+                                "When he's done, he tosses you a healing potion. "
+                                "\"You'll need it.\"",
+                                WIDTH
+                            ))
+                            space()
+                            _get_gw().potions["heal"] += 1
+                            print("❤️ Received: Healing Potion.")
+                            space()
+                            warrior.xp += 3
+                            print("📖 +3 XP from Nob's training.")
+
+                        continue_text()
+                        clear_screen()
+
+                        print(wrap(
+                            "A group of orc guards arrive at your cell and drag you "
+                            "down the coarse stone hallway toward the sounds of a "
+                            "roaring crowd.",
+                            WIDTH
+                        ))
+                        continue_text()
+                        clear_screen()
+                        arena_battle(_get_gw())
+                        return
+
+                    # ── Player refuses to try (again) ──
+                    if nob_hold_choice == "2":
+                        warrior.story_flags.add("nob_submit_cower")
+                        clear_screen()
+                        print(wrap(
+                            "You don't move. You don't even try.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "Nob stares at you for a long moment. His expression shifts "
+                            "from disappointment to something colder.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "\"Hopeless,\" he says quietly. He releases the hold and "
+                            "turns away without another word.",
+                            WIDTH
+                        ))
+                        space()
+                        print(wrap(
+                            "The cell door slams shut. You sit in the dark, alone with "
+                            "the distant roar of the crowd and the growing certainty "
+                            "that no one is coming to help you.",
+                            WIDTH
+                        ))
+                        space()
+                        warrior.xp += 2
+                        print("📖 +2 XP.")
+                        continue_text()
+                        clear_screen()
+
+                        print(wrap(
+                            "Hours later, the orc guards drag you from your cell "
+                            "and shove you toward the arena. No training. No gifts. "
+                            "No advice.",
+                            WIDTH
+                        ))
+                        continue_text()
+                        clear_screen()
+                        arena_battle(_get_gw())
+                        return
 
         # ------------------------------
         # SEARCH FOR THE TORCH PATH
@@ -1942,8 +3440,8 @@ def intro_story_inner(warrior):
                                 ))
                                 space()
                                 print(wrap(
-                                    "'It's a monster tournament. We need fighters — humans, mostly. "
-                                    "The crowd likes humans. You'll fight what we put in front of you, "
+                                    "'It's a monster tournament. We need fighters — terrans, mostly. "
+                                    "The crowd likes terrans. You'll fight what we put in front of you, "
                                     "and if you win, you fight again. If you lose, well. You won't have "
                                     "to worry about a third fight.'",
                                     WIDTH
@@ -2163,7 +3661,7 @@ def intro_story_inner(warrior):
 
                                 space()
                                 print(wrap(
-                                    "'You have to be the most stubborn human I've ever met. Consider me impressed, adventurer. "
+                                    "'You have to be the most stubborn teraan I've ever met. Consider me impressed, adventurer. "
                                     "You're a survivor. You'll make an excellent addition to our tournament.'"
                                 ))
 
@@ -2249,3 +3747,117 @@ def intro_story_inner(warrior):
 
 
 
+
+# ============================================================
+# WEREWOLF DEFEAT SCENE — Halloween Seasonal (v0.08)
+# ============================================================
+# Fires once per run after defeating the Female Werewolf.
+# She reverts to Teraan form, loses her cloak (player already
+# received it via roll_halloween_drop), screams in rage, and
+# bolts toward her masters. Plants the seed: the Beast Gods
+# have operatives in the field, and this one got away.
+#
+# Called from combat.py after the Halloween drop rolls.
+# Gated by story_flags so it only plays once per run.
+# ============================================================
+
+def werewolf_defeat_scene(warrior):
+    """
+    Post-combat cinematic for the Female Werewolf.
+    Self-contained horror beat — no branching, no NPC system needed.
+    """
+    if "werewolf_scene_played" in warrior.story_flags:
+        return  # only once per run
+
+    warrior.story_flags.add("werewolf_scene_played")
+
+    space()
+    time.sleep(0.5)
+
+    # ── Phase 1: The collapse and transformation ──
+    print(wrap(
+        "The werewolf staggers, claws scraping the dirt. "
+        "A low, broken whine escapes her throat — not the sound "
+        "of a beast, but something closer to a voice."
+    ))
+    continue_text()
+
+    print(wrap(
+        "Her body convulses. Fur recedes like shadow retreating "
+        "from torchlight. Claws shrink into fingers. The massive "
+        "frame folds inward, bones cracking and reshaping with "
+        "sounds that make your stomach turn."
+    ))
+    continue_text()
+
+    print(wrap(
+        "Where a werewolf lay moments ago, a young woman now "
+        "crouches in the dirt. She can't be older than twenty. "
+        "Torn rags cling to her frame — what's left of the "
+        "handler-issued gear she wore before the transformation."
+    ))
+    continue_text()
+
+    # ── Phase 2: The cloak pickup ──
+    print(wrap(
+        "Her silver-grey cloak lies in the mud beside her — thick "
+        "fur armor, too well-crafted to be natural. This was made "
+        "for her. Issued to her. You pick it up."
+    ))
+    continue_text()
+
+    # ── Phase 3: The scream ──
+    print(wrap(
+        "You turn to leave."
+    ))
+    time.sleep(0.8)
+
+    print()
+    print(f"   {RED}🐺 A scream cuts through the forest.{RESET}")
+    print()
+    time.sleep(0.6)
+
+    print(wrap(
+        "Not pain. Not fear. Rage — raw and absolute. "
+        "The kind of sound that comes from something that has "
+        "never known failure until this moment."
+    ))
+    continue_text()
+
+    # ── Phase 4: She's on her feet ──
+    print(wrap(
+        "She's on her feet. Teeth bared, eyes burning with "
+        "something between fury and humiliation. Her fists "
+        "clench at her sides. For a heartbeat, you think she "
+        "might lunge."
+    ))
+    continue_text()
+
+    print(wrap(
+        "But she doesn't. Her eyes flick over you — your "
+        "weapon, your stance, the blood on your armor that "
+        "isn't yours. She's calculating. And the calculation "
+        "comes back wrong for her."
+    ))
+    continue_text()
+
+    # ── Phase 5: She bolts ──
+    print(wrap(
+        "She turns and runs. Not away — toward something. "
+        "Into the treeline, bare feet silent on the forest "
+        "floor, moving with a speed that reminds you she is "
+        "not entirely teraan."
+    ))
+    continue_text()
+
+    print(wrap(
+        "The forest swallows her. The silence that follows "
+        "is heavier than the fight that came before it."
+    ))
+    time.sleep(0.5)
+
+    print()
+    print(f"   {YELLOW}You have a feeling this isn't over.{RESET}")
+    print()
+    continue_text()
+    space()

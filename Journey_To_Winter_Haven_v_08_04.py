@@ -78,18 +78,43 @@ def input(prompt=""):
     cleaned = raw.strip().lower()
 
     # v0.6.21: monster-select moved behind the '!' prefix to match the
-    # v0.6.19 dev-shortcut convention. Previously bare 'm' / 'monster'
-    # would force-start a battle from inside input() — a fat-finger at
-    # any of the ~200 input() prompts (yes/no, Press-Enter pauses, etc.)
-    # would yank the player into a debug fight. Now we emit the existing
-    # __MONSTER_SELECT__ sentinel instead of calling battle() directly,
-    # so handle_monster_select_shortcut() decides combat-aware behaviour
-    # (swap enemy mid-fight vs. start a debug fight out of combat). Callers
-    # that don't check the sentinel just see a harmless non-empty string.
+    # v0.6.19 dev-shortcut convention. v0.8.04: now acts directly like
+    # !debug — opens monster select, runs the fight, returns "" so the
+    # calling prompt re-asks. Previously returned a __MONSTER_SELECT__
+    # sentinel that only combat checked for, so it didn't work from
+    # story, merchant, or any other module's prompts.
     if cleaned in ("!m", "!monster"):
-        return "__MONSTER_SELECT__"
+        if GAME_WARRIOR:
+            monster = monster_select_menu()
+            if monster:
+                print("\n⚔️ Debug: starting a fight...\n")
+                battle(GAME_WARRIOR, monster)
+        else:
+            print("Monster select unavailable — warrior not created yet.")
+        return ""
+
+    # v0.8.01: !debug works from ANY prompt — rest menu, equip screen,
+    # combat, story, everywhere.  Opens the debug menu and then returns
+    # an empty string so the calling loop re-prompts after it closes.
+    if cleaned == "!debug":
+        if GAME_WARRIOR:
+            debug_menu(GAME_WARRIOR)
+        else:
+            print("Debug unavailable — warrior not created yet.")
+        return ""
+
+    # v0.8.01: !q and !c work from ANY prompt — rest menu, equip screen,
+    # merchant, everywhere.  Raises the exception so the handler in
+    # intro_story() or the main loop catches it.
+    if cleaned in ("!q", "!quit"):
+        raise RestartException
+    if cleaned in ("!c", "!combat"):
+        raise QuickCombatException
 
     return raw
+import builtins
+
+builtins.input = input
 
 def handle_monster_select_shortcut(raw, *, warrior=None, in_combat=False):
     """
@@ -203,10 +228,15 @@ _combat_module.has_unspent_points       = lambda hero: has_unspent_points(hero)
 _combat_module._stone_usable            = lambda hero: _stone_usable(hero)
 _combat_module.debug_menu               = lambda warrior, enemy=None: debug_menu(warrior, enemy)
 _combat_module.confirm_continue_if_points_left = lambda hero, prompt='Continue to the next fight?': confirm_continue_if_points_left(hero, prompt)
-_combat_module._real_input              = _real_input
+_combat_module._real_input              = input
+import story as _story_module
+_story_module._real_input               = input
+
+import debug as _debug_module
+_debug_module._real_input               = input
 
 import equipment as _equipment_module
-_equipment_module._real_input = _real_input
+_equipment_module._real_input = input
 from equipment import inventory_menu, make_loot, equip_item, unequip_item
 _combat_module.show_end_summary         = lambda warrior: show_end_summary(warrior)
 _combat_module.prompt_play_again        = lambda: prompt_play_again()
@@ -852,7 +882,7 @@ from hero import (
 
 def get_tier_for_monster_class(cls) -> int:
     """Figure out tier from MONSTER_TYPES / TIER4_BOSSES (used for debug UI)."""
-    for c, w in MONSTER_TYPES:
+    for c, w, _ in MONSTER_TYPES:
         if c is cls:
             return weight_to_tier(w)
     for c, _w in TIER4_BOSSES:
@@ -976,7 +1006,8 @@ def arena_battle(warrior, rounds_to_win=5):
                 warrior.death_defier_used = False
 
             enemy = select_arena_enemy(round_num)
-            result = battle(warrior, enemy, skip_rest=(round_num >= rounds_to_win - 1), round_num=round_num)
+            _halloween = getattr(warrior, "halloween_tournament", False)
+            result = battle(warrior, enemy, skip_rest=(not _halloween and round_num >= rounds_to_win - 1), round_num=round_num)
 
             # 1) Final boss / special Fallen ending
             if result == "win":
@@ -1277,12 +1308,16 @@ def main_menu():
         clear_screen()
         print()
         print("═" * 50)
-        print("        JOURNEY TO WINTER HAVEN")
+        print("    JOURNEY TO WINTER HAVEN")
+        print("      A New Champion Rises")
+        print("             v0.8.04")
         print("═" * 50)
         print()
         print("   [1] New Game")
         print("   [2] Local Leaderboard")
         print("   [3] Global Leaderboard")
+        print("   [4] 📖 Bestiary")
+        print("   [5] 📚 Collection Book")
         # v0.7.18: "Learn Basic Python" appears once the player has finished
         # a run. Difficulty-gated lesson unlocks are handled inside the mode.
         try:
@@ -1291,12 +1326,12 @@ def main_menu():
         except Exception:
             _python_unlocked = False
         if _python_unlocked:
-            print("   [4] 🐍 Learn Basic Python")
-            print("   [5] Quit")
-            _quit_key = "5"
+            print("   [6] 🐍 Learn Basic Python")
+            print("   [7] Quit")
+            _quit_key = "7"
         else:
-            print("   [4] Quit")
-            _quit_key = "4"
+            print("   [6] Quit")
+            _quit_key = "6"
         print()
         choice = input("   Select an option: ").strip()
 
@@ -1317,7 +1352,13 @@ def main_menu():
             # the Supabase submission path were both still fully working.
             show_global_leaderboard()
             input("\nPress Enter to return to the main menu...")
-        elif _python_unlocked and choice == "4":
+        elif choice == "4":
+            from bestiary import show_bestiary
+            show_bestiary()
+        elif choice == "5":
+            from collectibles import show_collection_book
+            show_collection_book()
+        elif _python_unlocked and choice == "6":
             import python_lessons as _pylessons
             _pylessons.python_lessons_menu(_pylessons.unlocked_lesson_count())
         elif choice == _quit_key:
@@ -1353,13 +1394,30 @@ if __name__ == "__main__":
             # to the top — global state will be re-initialised by the
             # statements at the head of the loop.
             continue
+        except RestartException:
+            # v0.8.01: safety net — if RestartException escapes intro_story's
+            # handler, loop back and create a fully fresh warrior.
+            continue
     
 
 
 # ============================================================
-# PATCH NOTES — JOURNEY TO WINTER HAVEN
+# PATCH NOTES — JOURNEY TO WINTER HAVEN: A NEW CHAMPION RISES
 # Full details: CHANGELOG.md / DEVLOG.md
 # ============================================================
+
+# ── v0.8 ERA — Terminal Polish & Quest Foundations ───────────
+# v0.8.02  !q, !c, !debug now work from ANY prompt (rest menu, equip, merchant,
+#          everywhere) via universal input override. RestartException from combat
+#          re-raised instead of calling intro_story with stale state. Main loop
+#          catches RestartException as safety net. Hit-Nob submit path awards
+#          +1 stat/skill point; cower/refrain get +0.10 score multiplier instead.
+#          Nob trainer dialogue fixed to first person. Champion jackpot chances
+#          bumped (Part 1: 20%→30%, Part 2: 10%→15%).
+# v0.8.01  Sex-based stat profiles expanded: Male 30 HP / ATK 1-6 / 0 DEF / 3 AP,
+#          Female 27 HP / ATK 2-4 / 1 DEF / 4 AP. Asymmetric by design — extra AP
+#          compensates lower ATK average. Unique Nob dialogue flags (WIP).
+#          Starter quest system (WIP).
 
 # ── v0.7 ERA — Modular Refactor & pygame Port Prep ──────────
 # v0.7.17  Flayed One debuff now delta-tracked (mid-fight stat gains survive); Skill Rank-Up

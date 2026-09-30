@@ -28,6 +28,16 @@ Thumbs.db
 *.exe
 *.spec
 
-# Scores (local player data)
+# Local player data
 scores.json
 python_progress.json
+
+# Aseprite source files (large)
+*.aseprite
+
+# Audio files (large)
+generated_audio/
+
+# Old version archives
+Major_Versions/
+Old V.08 builds/

@@ -1,0 +1,21 @@
+{
+  "discovered": {
+    "birthday_cake": {
+      "first_found": "2026-08-13",
+      "times_found": 17
+    },
+    "enchanted_seed_launcher": {
+      "first_found": "2026-09-09",
+      "times_found": 2
+    },
+    "sharpened_sucker": {
+      "first_found": "2026-09-15",
+      "times_found": 6
+    },
+    "werewolf_cloak": {
+      "first_found": "2026-09-17",
+      "times_found": 2
+    }
+  },
+  "bestiary": {}
+}

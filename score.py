@@ -70,6 +70,12 @@ TITLE_SCORE_VALUES = {
     # Tier 4 — true ending titles (final boss kill)
     "guardian":               500,   # Beat Young Chimera
     "dark_champion":          500,   # Beat Patronus
+
+    # --- Bestiary completion titles (v0.8.06) ---
+    "noob_bestiary_master":      50,   # Encounter every monster on Noob
+    "warrior_bestiary_master":  100,   # Encounter every monster on Warrior
+    "champion_bestiary_master": 150,   # Encounter every monster on Champion
+    "spirit_of_halloween":      250,   # Equip all 4 Halloween set pieces
 }
 
 FATE_TITLE_SCORE_VALUES = {
@@ -132,8 +138,8 @@ SUPPRESS_PER_FIGHT_BONUS_FOR = {"patronus", "chimera"}
 # Boss bonuses reflect the heal mechanic / higher HP pools on Champion.
 QUICK_KILL_CHAMPION_BONUS = {
     "fallen":   2,
-    "patronus": 4,
-    "chimera":  3,
+    "patronus": 6,
+    "chimera":  4,
     # all other keys default to +1 via the fallback in _quick_kill_threshold
 }
 
@@ -171,6 +177,7 @@ BOOKIE_INTIMIDATED_VALUE = 25
 POTION_VALUE                = 5     # per potion remaining
 POTION_BONUS_CAP            = 100   # max contribution from regular potions
 FROSTPINE_TONIC_SAVED_VALUE = 25    # separate, not in cap
+NOBS_SECRET_SAUCE_SAVED_VALUE = 25  # separate, not in cap — rare (25% roll)
 
 # Outcome multipliers — per difficulty  — v0.7.11
 # Noob: lower boss multipliers, Champion: higher, Warrior: baseline
@@ -296,7 +303,7 @@ def _tier_from_monster_types(enemy):
         try:
             from monsters import MONSTER_TYPES, weight_to_tier
             _MONSTER_TIER_CACHE = {
-                cls: weight_to_tier(weight) for cls, weight in MONSTER_TYPES
+                cls: weight_to_tier(weight) for cls, weight, _ in MONSTER_TYPES
             }
         except ImportError:
             _MONSTER_TIER_CACHE = {}
@@ -475,7 +482,20 @@ def _compute_potion_score(warrior):
     frostpine_count = potions.get("frostpine_tonic", 0)
     frostpine_score = FROSTPINE_TONIC_SAVED_VALUE if frostpine_count > 0 else 0
 
-    return regular_score, regular_count, frostpine_score, frostpine_count
+    # v0.8.03: Nob's Secret Sauce saved bonus (+25 if held — rare 25% roll reward)
+    sauce_count = potions.get("nobs_secret_sauce", 0)
+    sauce_score = NOBS_SECRET_SAUCE_SAVED_VALUE if sauce_count > 0 else 0
+
+    # v0.8.04: Birthday Cake saved bonus (+50 if held through all fights)
+    from collectibles import CAKE_SAVED_BONUS
+    cake_count = potions.get("birthday_cake", 0)
+    cake_score = CAKE_SAVED_BONUS if cake_count > 0 else 0
+
+    # v0.8.04: Book of Lost Secrets saved bonus (+50 if held through all fights)
+    book_count = potions.get("book_of_lost_secrets", 0)
+    book_score = CAKE_SAVED_BONUS if book_count > 0 else 0  # same value as cake
+
+    return regular_score, regular_count, frostpine_score, frostpine_count, sauce_score, sauce_count, cake_score, cake_count, book_score, book_count
 
 
 def _rank_for_score(score):
@@ -552,7 +572,7 @@ def show_run_score(warrior, outcome="defeat"):
     total_gold = int(getattr(warrior, "total_gold_earned", getattr(warrior, "gold", 0)))
     gold_score = math.floor(total_gold * GOLD_WEIGHT)
 
-    potion_score, potion_count, frostpine_score, frostpine_count = _compute_potion_score(warrior)
+    potion_score, potion_count, frostpine_score, frostpine_count, sauce_score, sauce_count, cake_score, cake_count, book_score, book_count = _compute_potion_score(warrior)
 
     # ---- Mastery ----
     level = max(1, int(getattr(warrior, "level", 1)))
@@ -567,12 +587,17 @@ def show_run_score(warrior, outcome="defeat"):
     bookie_count  = int(getattr(warrior, "bookie_intimidated_count", 0))
     bookie_score  = bookie_count * BOOKIE_INTIMIDATED_VALUE
 
+    # v0.8.06: bestiary completion flat bonus
+    from bestiary import get_bestiary_score_bonus
+    bestiary_score = get_bestiary_score_bonus(warrior)
+
     # ---- Subtotal & multiplier ----
     subtotal = (
         dmg_score + block_score + per_fight_total
-        + gold_score + potion_score + frostpine_score
+        + gold_score + potion_score + frostpine_score + sauce_score + cake_score + book_score
         + level_score + title_score + fate_score
         + jackpot_score + bookie_score
+        + bestiary_score
     )
 
     import sys as _sys
@@ -585,7 +610,28 @@ def show_run_score(warrior, outcome="defeat"):
     # Each qualifying quick kill added +0.10 to warrior.quick_kill_multiplier_bonus.
     qk_bonus = float(getattr(warrior, "quick_kill_multiplier_bonus", 0.0) or 0.0)
     qk_count = int(getattr(warrior, "quick_kill_count", 0) or 0)
-    multiplier = round(base_multiplier + qk_bonus, 2)
+
+    # v0.8.01: score multiplier for paths that missed Nob's stat bonuses.
+    # Compensates for playing at a stat disadvantage the whole run.
+    # Defiant (refused to run) gets +0.15 — bigger risk, bigger reward.
+    # Cower / refrain get +0.10.
+    _flags = getattr(warrior, "story_flags", set())
+    if "nob_forest_defiant" in _flags:
+        nob_hardship = 0.15
+    elif "nob_submit_cower" in _flags or "nob_submit_refrain" in _flags:
+        nob_hardship = 0.10
+    else:
+        nob_hardship = 0.0
+
+    # v0.8.03: story path hardship bonus (e.g. bo_stayed_refused_nob)
+    path_hardship = float(getattr(warrior, "score_multiplier_penalty", 0.0) or 0.0)
+
+    # v0.8.04: seasonal collection permanent multiplier
+    from collectibles import get_collection_multiplier, get_seasonal_score_bonus
+    collection_mult = get_collection_multiplier()
+    seasonal_bonus  = get_seasonal_score_bonus(warrior)
+
+    multiplier = round(base_multiplier + qk_bonus + nob_hardship + path_hardship + collection_mult + seasonal_bonus, 2)
     multiplied = math.floor(subtotal * multiplier)
 
     # Post-multiplier flat bonuses
@@ -641,6 +687,12 @@ def show_run_score(warrior, outcome="defeat"):
     _row(f"Potions Saved ({potion_count})", f"+{potion_score}{cap_pot}")
     if frostpine_count > 0:
         _row("Frostpine Tonic Saved",       f"+{frostpine_score}")
+    if sauce_count > 0:
+        _row("🧪 Nob's Secret Sauce Saved", f"+{sauce_score}")
+    if cake_count > 0:
+        _row("🎂 Birthday Cake Saved",      f"+{cake_score}")
+    if book_count > 0:
+        _row("📖 Book of Lost Secrets Saved", f"+{book_score}")
 
     print()
     print("  Mastery")
@@ -655,6 +707,9 @@ def show_run_score(warrior, outcome="defeat"):
         for key, pts in sorted(fates_earned, key=lambda kv: -kv[1]):
             display = _title_display_name(key)
             print(f"      • {display} (+{pts})")
+
+    if bestiary_score > 0:
+        _row("📖 Bestiary Completion", f"+{bestiary_score}")
 
     if jackpot_count > 0 or bookie_count > 0:
         print()
@@ -671,9 +726,21 @@ def show_run_score(warrior, outcome="defeat"):
     outcome_label = _outcome_label(outcome)
     # v0.6.19: show quick-kill multiplier as a separate breakdown line if any
     # quick kills happened, so the player can see where the bonus came from.
+    # v0.8.01: also show nob hardship bonus if applicable.
+    bonus_parts = []
     if qk_count > 0 and qk_bonus > 0:
+        bonus_parts.append(f"+{qk_bonus:.2f} ({qk_count}× ⚡ quick kill)")
+    if nob_hardship > 0:
+        bonus_parts.append(f"+{nob_hardship:.2f} (🐻 Nob's bet)")
+    if collection_mult > 0:
+        bonus_parts.append(f"+{collection_mult:.2f} (📚 collection)")
+    if seasonal_bonus > 0:
+        bonus_parts.append(f"+{seasonal_bonus:.2f} (🎂 seasonal)")
+
+    if bonus_parts:
+        bonus_str = " ".join(bonus_parts)
         _row(
-            f"× {base_multiplier} ({outcome_label}) + {qk_bonus:.2f} ({qk_count}× ⚡ quick kill)",
+            f"× {base_multiplier} ({outcome_label}) {bonus_str}",
             f"× {multiplier}",
             indent=2,
         )

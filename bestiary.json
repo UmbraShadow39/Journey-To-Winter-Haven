@@ -1,0 +1,673 @@
+{
+  "noob": {
+    "Young Goblin": {
+      "base": {
+        "hp": 6,
+        "atk": "1-2",
+        "def": 1,
+        "ap": 1,
+        "xp": 7
+      },
+      "variants": {},
+      "times_defeated": 2,
+      "first_seen": "2026-08-24",
+      "tier": 1
+    },
+    "Dire Wolf Pup": {
+      "base": {
+        "hp": 17,
+        "atk": "4-6",
+        "def": 3,
+        "ap": 3,
+        "xp": 21
+      },
+      "variants": {
+        "Hardened": {
+          "hp": 25,
+          "atk": "6-7",
+          "def": 4,
+          "ap": 3,
+          "xp": 32
+        }
+      },
+      "times_defeated": 2,
+      "first_seen": "2026-08-24",
+      "tier": 2
+    },
+    "Flayed One": {
+      "base": {
+        "hp": "?",
+        "atk": "?",
+        "def": "?",
+        "ap": "?",
+        "xp": "?"
+      },
+      "variants": {
+        "Hardened": {
+          "hp": 34,
+          "atk": "7-9",
+          "def": 3,
+          "ap": 4,
+          "xp": 45
+        }
+      },
+      "times_defeated": 1,
+      "first_seen": "2026-08-24",
+      "tier": 3
+    },
+    "Fallen Warrior": {
+      "base": {
+        "hp": 52,
+        "atk": "6-9",
+        "def": 5,
+        "ap": 3,
+        "xp": 75
+      },
+      "variants": {},
+      "times_defeated": 2,
+      "first_seen": "2026-08-24",
+      "tier": 4
+    },
+    "Young Chimera": {
+      "base": {
+        "hp": 64,
+        "atk": "11-14",
+        "def": 6,
+        "ap": 99,
+        "xp": 0
+      },
+      "variants": {},
+      "times_defeated": 4,
+      "first_seen": "2026-08-24",
+      "tier": 5
+    },
+    "Javelina": {
+      "base": {
+        "hp": 18,
+        "atk": "3-6",
+        "def": 2,
+        "ap": 3,
+        "xp": 20
+      },
+      "variants": {},
+      "times_defeated": 1,
+      "first_seen": "2026-08-26",
+      "tier": 2
+    },
+    "Giant Diseased Rat": {
+      "base": {
+        "hp": "?",
+        "atk": "?",
+        "def": "?",
+        "ap": "?",
+        "xp": "?"
+      },
+      "variants": {
+        "Veteran": {
+          "hp": 29,
+          "atk": "6-8",
+          "def": 4,
+          "ap": 3,
+          "xp": 35
+        }
+      },
+      "times_defeated": 1,
+      "first_seen": "2026-08-26",
+      "tier": 1
+    },
+    "Wolf Pup Rider": {
+      "base": {
+        "hp": "?",
+        "atk": "?",
+        "def": "?",
+        "ap": "?",
+        "xp": "?"
+      },
+      "variants": {
+        "Hardened": {
+          "hp": 33,
+          "atk": "6-9",
+          "def": 4,
+          "ap": 3,
+          "xp": 42
+        }
+      },
+      "times_defeated": 1,
+      "first_seen": "2026-08-26",
+      "tier": 3
+    },
+    "The Trickster": {
+      "base": {
+        "hp": "?",
+        "atk": "?",
+        "def": "?",
+        "ap": "?",
+        "xp": "?"
+      },
+      "variants": {
+        "Hardened": {
+          "hp": 30,
+          "atk": "4-6",
+          "def": 3,
+          "ap": 3,
+          "xp": 33
+        }
+      },
+      "times_defeated": 2,
+      "first_seen": "2026-09-15",
+      "tier": 2
+    }
+  },
+  "warrior": {
+    "Green Slime": {
+      "base": {
+        "hp": 10,
+        "atk": "1-2",
+        "def": 0,
+        "ap": 1,
+        "xp": 5
+      },
+      "variants": {},
+      "times_defeated": 2,
+      "first_seen": "2026-08-31",
+      "tier": 1
+    },
+    "Goblin Archer": {
+      "base": {
+        "hp": 20,
+        "atk": "4-6",
+        "def": 2,
+        "ap": 3,
+        "xp": 19
+      },
+      "variants": {},
+      "times_defeated": 1,
+      "first_seen": "2026-08-31",
+      "tier": 2
+    },
+    "Red Slime": {
+      "base": {
+        "hp": 21,
+        "atk": "3-5",
+        "def": 2,
+        "ap": 3,
+        "xp": 18
+      },
+      "variants": {
+        "Hardened": {
+          "hp": 31,
+          "atk": "5-7",
+          "def": 3,
+          "ap": 3,
+          "xp": 27
+        }
+      },
+      "times_defeated": 2,
+      "first_seen": "2026-08-31",
+      "tier": 2
+    },
+    "Drowned One": {
+      "base": {
+        "hp": "?",
+        "atk": "?",
+        "def": "?",
+        "ap": "?",
+        "xp": "?"
+      },
+      "variants": {
+        "Hardened": {
+          "hp": 47,
+          "atk": "8-11",
+          "def": 4,
+          "ap": 4,
+          "xp": 54
+        }
+      },
+      "times_defeated": 1,
+      "first_seen": "2026-08-31",
+      "tier": 3
+    },
+    "Fallen Warrior": {
+      "base": {
+        "hp": 65,
+        "atk": "7-11",
+        "def": 6,
+        "ap": 5,
+        "xp": 75
+      },
+      "variants": {},
+      "times_defeated": 4,
+      "first_seen": "2026-08-31",
+      "tier": 4
+    },
+    "Patronus": {
+      "base": {
+        "hp": 194,
+        "atk": "15-21",
+        "def": 6,
+        "ap": 7,
+        "xp": 0
+      },
+      "variants": {},
+      "times_defeated": 6,
+      "first_seen": "2026-08-31",
+      "tier": 5
+    },
+    "Wolf Pup": {
+      "base": {
+        "hp": "?",
+        "atk": "?",
+        "def": "?",
+        "ap": "?",
+        "xp": "?"
+      },
+      "variants": {
+        "Hardened": {
+          "hp": 23,
+          "atk": "5-7",
+          "def": 3,
+          "ap": 2,
+          "xp": 20
+        }
+      },
+      "times_defeated": 1,
+      "first_seen": "2026-09-03",
+      "tier": 1
+    },
+    "Hydra Hatchling": {
+      "base": {
+        "hp": 35,
+        "atk": "5-8",
+        "def": 4,
+        "ap": 4,
+        "xp": 33
+      },
+      "variants": {
+        "Hardened": {
+          "hp": 45,
+          "atk": "7-10",
+          "def": 5,
+          "ap": 3,
+          "xp": 50
+        }
+      },
+      "times_defeated": 2,
+      "first_seen": "2026-09-03",
+      "tier": 3
+    },
+    "Noob Ghost": {
+      "base": {
+        "hp": "?",
+        "atk": "?",
+        "def": "?",
+        "ap": "?",
+        "xp": "?"
+      },
+      "variants": {
+        "Veteran": {
+          "hp": 41,
+          "atk": "8-11",
+          "def": 3,
+          "ap": 3,
+          "xp": 35
+        }
+      },
+      "times_defeated": 1,
+      "first_seen": "2026-09-03",
+      "tier": 2
+    },
+    "The Trickster": {
+      "base": {
+        "hp": 25,
+        "atk": "3-5",
+        "def": 2,
+        "ap": 3,
+        "xp": 22
+      },
+      "variants": {
+        "Veteran": {
+          "hp": 35,
+          "atk": "5-7",
+          "def": 4,
+          "ap": 3,
+          "xp": 50
+        },
+        "Hardened": {
+          "hp": 35,
+          "atk": "5-7",
+          "def": 3,
+          "ap": 3,
+          "xp": 33
+        }
+      },
+      "times_defeated": 4,
+      "first_seen": "2026-09-15",
+      "tier": 2
+    },
+    "Female Werewolf": {
+      "base": {
+        "hp": "?",
+        "atk": "?",
+        "def": "?",
+        "ap": "?",
+        "xp": "?"
+      },
+      "variants": {
+        "Hardened": {
+          "hp": 43,
+          "atk": "9-13",
+          "def": 4,
+          "ap": 4,
+          "xp": 53
+        }
+      },
+      "times_defeated": 2,
+      "first_seen": "2026-09-17",
+      "tier": 3
+    },
+    "Giant Animated Jack O'Lantern": {
+      "base": {
+        "hp": "?",
+        "atk": "?",
+        "def": "?",
+        "ap": "?",
+        "xp": "?"
+      },
+      "variants": {
+        "Hardened": {
+          "hp": 23,
+          "atk": "3-5",
+          "def": 3,
+          "ap": 2,
+          "xp": 23
+        }
+      },
+      "times_defeated": 1,
+      "first_seen": "2026-09-23",
+      "tier": 1
+    },
+    "Young Goblin": {
+      "base": {
+        "hp": 8,
+        "atk": "1-3",
+        "def": 1,
+        "ap": 1,
+        "xp": 7
+      },
+      "variants": {},
+      "times_defeated": 1,
+      "first_seen": "2026-09-23",
+      "tier": 1
+    },
+    "Imp": {
+      "base": {
+        "hp": "?",
+        "atk": "?",
+        "def": "?",
+        "ap": "?",
+        "xp": "?"
+      },
+      "variants": {
+        "Hardened": {
+          "hp": 19,
+          "atk": "4-6",
+          "def": 1,
+          "ap": 2,
+          "xp": 11
+        },
+        "Veteran": {
+          "hp": 29,
+          "atk": "6-8",
+          "def": 2,
+          "ap": 3,
+          "xp": 17
+        }
+      },
+      "times_defeated": 2,
+      "first_seen": "2026-09-23",
+      "tier": 1
+    },
+    "Brittle Skeleton": {
+      "base": {
+        "hp": "?",
+        "atk": "?",
+        "def": "?",
+        "ap": "?",
+        "xp": "?"
+      },
+      "variants": {
+        "Veteran": {
+          "hp": 32,
+          "atk": "6-9",
+          "def": 3,
+          "ap": 3,
+          "xp": 21
+        },
+        "Hardened": {
+          "hp": 22,
+          "atk": "4-7",
+          "def": 2,
+          "ap": 2,
+          "xp": 14
+        }
+      },
+      "times_defeated": 2,
+      "first_seen": "2026-09-23",
+      "tier": 1
+    },
+    "Flayed One": {
+      "base": {
+        "hp": "?",
+        "atk": "?",
+        "def": "?",
+        "ap": "?",
+        "xp": "?"
+      },
+      "variants": {
+        "Hardened": {
+          "hp": 43,
+          "atk": "9-11",
+          "def": 4,
+          "ap": 4,
+          "xp": 45
+        }
+      },
+      "times_defeated": 1,
+      "first_seen": "2026-09-29",
+      "tier": 3
+    },
+    "Young Chimera": {
+      "base": {
+        "hp": 96,
+        "atk": "17-22",
+        "def": 10,
+        "ap": 99,
+        "xp": 0
+      },
+      "variants": {},
+      "times_defeated": 4,
+      "first_seen": "2026-09-29",
+      "tier": 5
+    }
+  },
+  "champion": {
+    "Green Slime": {
+      "base": {
+        "hp": 12,
+        "atk": "1-2",
+        "def": 0,
+        "ap": 1,
+        "xp": 5
+      },
+      "variants": {
+        "Hardened": {
+          "hp": 24,
+          "atk": "4-5",
+          "def": 1,
+          "ap": 2,
+          "xp": 8
+        }
+      },
+      "times_defeated": 2,
+      "first_seen": "2026-09-07",
+      "tier": 1
+    },
+    "Giant Animated Jack O'Lantern": {
+      "base": {
+        "hp": "?",
+        "atk": "?",
+        "def": "?",
+        "ap": "?",
+        "xp": "?"
+      },
+      "variants": {
+        "Veteran": {
+          "hp": 34,
+          "atk": "5-7",
+          "def": 5,
+          "ap": 3,
+          "xp": 35
+        }
+      },
+      "times_defeated": 5,
+      "first_seen": "2026-09-07",
+      "tier": 1
+    },
+    "Young Goblin": {
+      "base": {
+        "hp": 10,
+        "atk": "1-4",
+        "def": 1,
+        "ap": 1,
+        "xp": 7
+      },
+      "variants": {},
+      "times_defeated": 1,
+      "first_seen": "2026-09-09",
+      "tier": 1
+    },
+    "Javelina": {
+      "base": {
+        "hp": 28,
+        "atk": "5-8",
+        "def": 4,
+        "ap": 3,
+        "xp": 20
+      },
+      "variants": {
+        "Hardened": {
+          "hp": 40,
+          "atk": "7-11",
+          "def": 5,
+          "ap": 3,
+          "xp": 30
+        }
+      },
+      "times_defeated": 2,
+      "first_seen": "2026-09-09",
+      "tier": 2
+    },
+    "Flayed One": {
+      "base": {
+        "hp": "?",
+        "atk": "?",
+        "def": "?",
+        "ap": "?",
+        "xp": "?"
+      },
+      "variants": {
+        "Hardened": {
+          "hp": 52,
+          "atk": "11-13",
+          "def": 5,
+          "ap": 4,
+          "xp": 45
+        }
+      },
+      "times_defeated": 1,
+      "first_seen": "2026-09-09",
+      "tier": 3
+    },
+    "Fallen Warrior": {
+      "base": {
+        "hp": 78,
+        "atk": "8-13",
+        "def": 7,
+        "ap": 4,
+        "xp": 75
+      },
+      "variants": {},
+      "times_defeated": 2,
+      "first_seen": "2026-09-09",
+      "tier": 4
+    },
+    "Dire Wolf Pup": {
+      "base": {
+        "hp": 25,
+        "atk": "6-8",
+        "def": 5,
+        "ap": 3,
+        "xp": 21
+      },
+      "variants": {},
+      "times_defeated": 1,
+      "first_seen": "2026-09-15",
+      "tier": 2
+    },
+    "Goblin Archer": {
+      "base": {
+        "hp": "?",
+        "atk": "?",
+        "def": "?",
+        "ap": "?",
+        "xp": "?"
+      },
+      "variants": {
+        "Hardened": {
+          "hp": 36,
+          "atk": "7-10",
+          "def": 4,
+          "ap": 3,
+          "xp": 29
+        }
+      },
+      "times_defeated": 1,
+      "first_seen": "2026-09-15",
+      "tier": 2
+    },
+    "Wolf Pup Rider": {
+      "base": {
+        "hp": "?",
+        "atk": "?",
+        "def": "?",
+        "ap": "?",
+        "xp": "?"
+      },
+      "variants": {
+        "Hardened": {
+          "hp": 49,
+          "atk": "8-13",
+          "def": 6,
+          "ap": 3,
+          "xp": 42
+        }
+      },
+      "times_defeated": 1,
+      "first_seen": "2026-09-15",
+      "tier": 3
+    },
+    "Young Chimera": {
+      "base": {
+        "hp": 120,
+        "atk": "21-27",
+        "def": 12,
+        "ap": 98,
+        "xp": 0
+      },
+      "variants": {},
+      "times_defeated": 2,
+      "first_seen": "2026-09-15",
+      "tier": 5
+    }
+  }
+}

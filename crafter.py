@@ -830,6 +830,26 @@ def _highest_input_rarity(warrior, recipe):
     return None
 
 
+def _estimate_recipe_cost(warrior, recipe):
+    """
+    v0.8: QoL — estimate the TOTAL gold needed for a recipe, including
+    buying any missing components at Normal price from the crafter.
+    Returns (buy_cost, craft_fee, total):
+      buy_cost  — gold to purchase missing components at Normal price
+      craft_fee — the recipe's base gold_cost (Normal rarity)
+      total     — buy_cost + craft_fee
+    Shows the player what they're looking at BEFORE they start gathering.
+    """
+    buy_cost = 0
+    for comp_name, needed in recipe["components"].items():
+        have = _count_inventory(warrior, comp_name)
+        short = max(0, needed - have)
+        buy_cost += short * COMPONENT_PRICES["normal"]
+
+    craft_fee = recipe["gold_cost"]
+    return buy_cost, craft_fee, buy_cost + craft_fee
+
+
 def _can_afford_recipe(warrior, recipe):
     """
     Returns (can_craft: bool, missing_components: list[str], craft_rarity: str|None, cost: int)
@@ -1724,6 +1744,17 @@ def _render_recipe_set_menu(warrior, set_label, recipes_dict, header_text):
         print(f"  {idx:>2}) {name:<22}{marker}")
         print(f"      {stats_line}")
         print(f"      {req:<32} {status}")
+
+        # v0.8: cost estimate — shows total gold needed including buying
+        # missing components at Normal price. Only shown when something is
+        # still missing or unaffordable, so the player can plan ahead.
+        if missing or not can:
+            buy_cost, craft_fee, total = _estimate_recipe_cost(warrior, recipe)
+            if buy_cost > 0:
+                print(f"      💰 Est. total: {total}g  ({buy_cost}g components + {craft_fee}g craft fee)")
+            else:
+                print(f"      💰 Craft fee: {craft_fee}g  (components ready)")
+
         actions[str(idx)] = name
         idx += 1
         print()
@@ -1938,6 +1969,8 @@ def apply_all_set_bonuses(warrior):
     """
     apply_wolf_set_bonus(warrior)
     apply_dire_wolf_set_bonus(warrior)
+    from collectibles import apply_halloween_set_bonus
+    apply_halloween_set_bonus(warrior)
 
 
 # ============================================================
@@ -2076,6 +2109,48 @@ SOCKETABLE_INTO_ARMOR = {
 _ARMOR_DEF_HP_SOCKETABLES = {"Cured Wolf Pelt", "Cured Dire Wolf Pelt"}
 _ARMOR_CRYSTAL_NAMES = {"AP Crystal", "HP Crystal", "Defence Crystal", "ATK Crystal"}
 
+# ---------------------------------------------------------------
+# SOCKET-BASED ARMOR RENAMING
+# ---------------------------------------------------------------
+# When a component is socketed into armor, the armor's display name
+# updates to reflect what's inside. base_name is preserved for revert.
+
+SOCKET_NAME_PREFIX = {
+    "Javelina Tusk":     "Spiked",
+    "Sharpened Tusk":    "Spiked",
+    "Poison Sac":        "Venomous",
+    "Fire Sac":          "Scorched",
+    "Acid Sac":          "Corrosive",
+    "Soul Pendant":      "Soul-Bound",
+    "HP Crystal":        "Vital",
+    "Defence Crystal":   "Fortified",
+    "ATK Crystal":       "Brutal",
+    "AP Crystal":        "Energized",
+    "Cured Wolf Pelt":   "Reinforced",
+    "Cured Dire Wolf Pelt": "Reinforced",
+}
+
+# Component rarity → tier number for info display
+SOCKET_RARITY_TO_TIER = {
+    "poor": 1, "normal": 2, "uncommon": 3,
+    "rare": 4, "epic": 5, "legendary": 6, "mythril": 7,
+}
+
+
+def _rebuild_armor_name(armor):
+    """Rebuild armor display name from base_name + socketed components.
+    Uses the first non-None socket's prefix. Reverts to base_name if empty."""
+    base = getattr(armor, "base_name", armor.name)
+    for socketed in getattr(armor, "sockets", []) or []:
+        if socketed is None:
+            continue
+        prefix = SOCKET_NAME_PREFIX.get(socketed.name, "")
+        if prefix:
+            armor.name = f"{prefix} {base}"
+            return
+    # No sockets filled — revert to base
+    armor.name = base
+
 # Elemental resistance granted by a Sac, keyed by the SAC'S OWN rarity —
 # this is independent of the armor piece's rarity/socket count.
 ELEMENT_RESISTANCE_BY_RARITY = {
@@ -2143,8 +2218,11 @@ def armor_socket_reinforcement(base_value):
     75% power for a cured-pelt armor socket, floored at +1 regardless of the
     base stat — Nathan's call: even a Poor cure (which may have 0 in one
     stat raw) still reinforces armor by at least +1/+1 once socketed.
+    v0.8.02: rounds UP so rare pelts actually feel rare (75% of 2 = 1.5 → 2,
+    not truncated to 1 like normal pelts).
     """
-    return max(1, int(base_value * SOCKET_POWER_RATIO))
+    import math
+    return max(1, math.ceil(base_value * SOCKET_POWER_RATIO))
 
 
 def armor_socket_stat_bonus(item):
@@ -2152,13 +2230,14 @@ def armor_socket_stat_bonus(item):
     Sum the stat bonuses an armor piece gets from its currently socketed items.
 
     Cured pelts contribute DEF/HP at 75% socket power.
-    Crystals contribute their specific stat at 75% socket power:
+    Crystals contribute their specific stat at FULL value (armor is built
+    with crystal slots — no improvisation nerf):
       - HP Crystal → HP bonus
       - Defence Crystal → DEF bonus
       - ATK Crystal → ATK bonus (applied as min/max ATK on the hero)
       - AP Crystal → AP bonus (applied as max_ap on the hero)
     Sacs grant resistance (see armor_socket_resistance), not stat bonuses.
-    Tusks and Soul Pendants have combat-time effects, not stat bonuses.
+    Tusks and Soul Pendants have combat-time effects at 75% socket power.
     """
     def_bonus = 0
     hp_bonus  = 0
@@ -2175,9 +2254,11 @@ def armor_socket_stat_bonus(item):
             hp_bonus  += armor_socket_reinforcement(getattr(socketed, "max_hp", 0))
 
         elif sock_name in _ARMOR_CRYSTAL_NAMES:
-            # v0.7.20: crystals in armor grant their stat at socket power
+            # v0.8: crystals get FULL value in armor sockets — armor is
+            # specifically built with crystal slots, no improvisation nerf.
+            # Other socketables (pelts, tusks, pendants) keep 75%.
             crystal_value = CRYSTAL_RARITY_VALUE.get(sock_name, {}).get(sock_rarity, 0)
-            socketed_value = max(1, int(crystal_value * SOCKET_POWER_RATIO))
+            socketed_value = max(1, crystal_value)
             if sock_name == "HP Crystal":
                 hp_bonus += socketed_value
             elif sock_name == "Defence Crystal":
@@ -2552,6 +2633,9 @@ def _socket_item_into_armor(warrior, armor, socket_idx, component):
     if component in warrior.inventory:
         warrior.inventory.remove(component)
 
+    # Update armor display name to reflect socketed component
+    _rebuild_armor_name(armor)
+
     if component.name in ("Poison Sac", "Fire Sac", "Acid Sac"):
         # Sacs grant resistance (read live from sockets) — no stat delta to apply.
         pct = int(ELEMENT_RESISTANCE_BY_RARITY.get(component.rarity, 0.0) * 100)
@@ -2582,10 +2666,10 @@ def _socket_item_into_armor(warrior, armor, socket_idx, component):
         input("\n  Press Enter...")
         return True
 
-    # v0.7.20: Crystals grant stat bonuses at socket power.
+    # v0.8: Crystals grant stat bonuses at FULL value (purpose-built slots).
     if component.name in _ARMOR_CRYSTAL_NAMES:
         crystal_value = CRYSTAL_RARITY_VALUE.get(component.name, {}).get(component.rarity, 0)
-        socketed_value = max(1, int(crystal_value * SOCKET_POWER_RATIO))
+        socketed_value = max(1, crystal_value)
         stat_name = {"AP Crystal": "AP", "HP Crystal": "HP",
                      "Defence Crystal": "DEF", "ATK Crystal": "ATK"}[component.name]
         # Apply live stat delta if armor is equipped
@@ -2636,12 +2720,15 @@ def _unsocket_item_from_armor(warrior, armor, socket_idx):
     armor.sockets[socket_idx] = None
     warrior.inventory.append(component)
 
+    # Rebuild armor display name after removing component
+    _rebuild_armor_name(armor)
+
     if component.name not in ("Poison Sac", "Fire Sac", "Acid Sac",
                               "Javelina Tusk", "Sharpened Tusk", "Soul Pendant"):
         if component.name in _ARMOR_CRYSTAL_NAMES:
-            # v0.7.20: reverse crystal stat delta
+            # v0.8: reverse crystal stat delta — crystals use FULL value (no 75% nerf)
             crystal_value = CRYSTAL_RARITY_VALUE.get(component.name, {}).get(component.rarity, 0)
-            socketed_value = max(1, int(crystal_value * SOCKET_POWER_RATIO))
+            socketed_value = max(1, crystal_value)
             if component.name == "HP Crystal":
                 _apply_equipped_armor_socket_delta(warrior, armor, 0, -socketed_value)
             elif component.name == "Defence Crystal":

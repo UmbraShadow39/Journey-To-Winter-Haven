@@ -671,25 +671,19 @@ def inventory_menu(hero):
 RARITY_ORDER = ["poor", "normal", "uncommon", "rare", "epic", "legendary", "mythril"]
 
 def roll_rarity(monster_level=1, round_num=0):
-    """Returns a rarity string based on monster level and round.
-    On Champion difficulty, poor drops are removed; normal/uncommon/rare only
-    (50%/30%/20%). rare/epic/legendary/mythril otherwise require debug or boss drops."""
-    if round_num == 1:
-        thresholds = (30, 80)   # <=30 poor, <=80 normal, else uncommon
-    elif monster_level >= 3:
-        thresholds = (15, 65)
-    elif monster_level == 2:
-        thresholds = (40, 85)
-    else:
-        thresholds = (65, 90)
+    """Returns a rarity string based on monster level, round, and difficulty.
+    Noob:     poor / normal / uncommon (base rates)
+    Warrior:  poor / normal / uncommon (shifted: -15% poor, +10% normal, +5% uncommon)
+    Champion: normal / uncommon / rare only (poor removed entirely)
+    rare/epic/legendary/mythril otherwise require debug or boss drops."""
+    import sys
+    _main = sys.modules.get("__main__")
+    _diff = getattr(_main, "DIFFICULTY", "warrior") if _main else "warrior"
 
     # Champion difficulty: no poor drops; normal/uncommon/rare only
     # Base 50% normal, 30% uncommon, 20% rare  — v0.7.14 (was 60/30/10)
     # v0.7.15: higher variants (Hardened/Veteran/Elite) shift +10% into rare
     # per level above 1, taken out of normal. Uncommon stays flat at 30%.
-    import sys
-    _main = sys.modules.get("__main__")
-    _diff = getattr(_main, "DIFFICULTY", "warrior") if _main else "warrior"
     if _diff == "champion":
         if monster_level >= 3:
             n_cut, u_cut = 30, 60    # 30% normal / 30% uncommon / 40% rare
@@ -701,7 +695,28 @@ def roll_rarity(monster_level=1, round_num=0):
         if r <= n_cut:   return "normal"
         elif r <= u_cut: return "uncommon"
         else:            return "rare"
-    
+
+    # Warrior difficulty: -10% poor, +7% normal, +3% uncommon vs Noob
+    if _diff == "warrior":
+        if round_num == 1:
+            thresholds = (20, 77)   # 20% poor / 57% normal / 23% uncommon
+        elif monster_level >= 3:
+            thresholds = (5, 62)    # 5% poor  / 57% normal / 38% uncommon
+        elif monster_level == 2:
+            thresholds = (30, 82)   # 30% poor / 52% normal / 18% uncommon
+        else:
+            thresholds = (55, 87)   # 55% poor / 32% normal / 13% uncommon
+    else:
+        # Noob (and any other non-Champion, non-Warrior difficulty): base rates
+        if round_num == 1:
+            thresholds = (30, 80)   # 30% poor / 50% normal / 20% uncommon
+        elif monster_level >= 3:
+            thresholds = (15, 65)   # 15% poor / 50% normal / 35% uncommon
+        elif monster_level == 2:
+            thresholds = (40, 85)   # 40% poor / 45% normal / 15% uncommon
+        else:
+            thresholds = (65, 90)   # 65% poor / 25% normal / 10% uncommon
+
     r = random.randint(1, 100)
     if r <= thresholds[0]:
         return "poor"
@@ -842,6 +857,23 @@ DIRE_WOLF_PELT_STATS = {
     "legendary":{"defence": 4, "max_hp": 4},
     "mythril":  {"defence": 5, "max_hp": 5},
     "mythril_plus": {"defence": 6, "max_hp": 6},
+}
+
+# ----------------------------------------------------------------
+# Werewolf Cloak  (cape)  — T3 Halloween drop from Female Werewolf
+# poor:     +3 def
+# normal:   +3 def, +3 max_hp
+# uncommon: +4 def, +3 max_hp
+# ----------------------------------------------------------------
+WEREWOLF_CLOAK_STATS = {
+    "poor":         {"defence": 3, "max_hp": 0},
+    "normal":       {"defence": 3, "max_hp": 3},
+    "uncommon":     {"defence": 4, "max_hp": 3},
+    "rare":         {"defence": 4, "max_hp": 4},
+    "epic":         {"defence": 5, "max_hp": 4},
+    "legendary":    {"defence": 5, "max_hp": 5},
+    "mythril":      {"defence": 6, "max_hp": 6},
+    "mythril_plus": {"defence": 7, "max_hp": 7},
 }
 
 # ----------------------------------------------------------------
@@ -1109,7 +1141,7 @@ RIDERS_ARMOR_STATS = {
 # knows exactly what they're getting and can plan around it.
 #
 # Lightrender  (One-Handed): +6 ATK, +3 DEF — balanced, keeps accessory slot free.
-# Destiny Definer (Two-Handed): +9 ATK, no DEF — raw power, no room for accessories.
+# Destiny Definer (Two-Handed): +9 ATK, no DEF — raw power, no room for another weapon or shield.
 # ----------------------------------------------------------------
 # ----------------------------------------------------------------
 # Tainted Champion's Breastplate stats — now the dormant "potential" values
@@ -1386,7 +1418,7 @@ def _make_weapon_core(corrupted=False):
     print()
     print(f"  2) {o_name}  — Two-Handed Sword  (Solforged Steel)" if not corrupted else f"  2) {o_name}  — Two-Handed Sword  (Voidforged)")
     print(f"       ⚔️  ATK +{s2h['atk']}   🛡️  DEF {_def_str(s2h['def'])}")
-    print(f"       Raw power. No room for accessories.")
+    print(f"       Raw power. No room for another weapon or a shield.")
     print()
 
     while True:
@@ -1419,6 +1451,19 @@ def _make_weapon_core(corrupted=False):
         defence    = stats["def"],
         two_handed = is_two_handed,
     )
+
+
+_RAT_STOLEN_POOL = [
+    "Green Slime", "red slime", "Wolf Pup", "Brittle Skeleton",
+    "Imp", "Young Goblin", "Goblin Archer", "Javelina",
+    "Dire Wolf Pup", "Wolf Pup Rider",
+]
+
+def _rat_stolen_loot(rarity, round_num):
+    """Giant Diseased Rat drops a random T1/T2 monster's loot — rats are thieves."""
+    donor = random.choice(_RAT_STOLEN_POOL)
+    loot = make_loot(donor, monster_level=1, round_num=round_num, forced_rarity="normal")
+    return loot
 
 
 def make_loot(monster_name, monster_level=1, round_num=0, forced_rarity=None):
@@ -1584,6 +1629,11 @@ def make_loot(monster_name, monster_level=1, round_num=0, forced_rarity=None):
             stone_charges     = 0,
         ),
 
+        # ── Noob-exclusive: Giant Diseased Rat — stolen loot ──
+        # Rats are thieves — drops a random T1/T2 monster's loot.
+        # Placeholder until the proper Rat Fang accessory is built.
+        "Giant Diseased Rat": lambda: _rat_stolen_loot(rarity, round_num),
+
         # ── Boss drops (evil path) ─────────────────────────────
         # v0.7.19: raw, uncorrupted material — see design note above.
         # Potential stats are stashed as inert attributes (sol_potential)
@@ -1666,3 +1716,33 @@ def make_loot(monster_name, monster_level=1, round_num=0, forced_rarity=None):
 #   getattr(warrior, "berserk_active", False)
 #   getattr(enemy,   "defence",        0)
 # =============================================================================
+
+# ----------------------------------------------------------------
+# Pumpkin Helm  (helm) — Candy shop gear (20 candy, rare stock)
+# A carved pumpkin helm. Provides defence, HP, and magic resistance.
+# Dread Aura is on the Jack O'Lantern Head set piece, not this helm.
+# ----------------------------------------------------------------
+PUMPKIN_HELM_STATS = {
+    "poor":         {"defence": 2, "max_hp": 4, "magic_res": 0, "dread_aura": 0.08},
+    "normal":       {"defence": 3, "max_hp": 6, "magic_res": 1, "dread_aura": 0.10},
+    "uncommon":     {"defence": 3, "max_hp": 7, "magic_res": 1, "dread_aura": 0.12},
+    "rare":         {"defence": 4, "max_hp": 8, "magic_res": 1, "dread_aura": 0.14},
+    "epic":         {"defence": 4, "max_hp": 9, "magic_res": 2, "dread_aura": 0.16},
+    "legendary":    {"defence": 5, "max_hp": 10, "magic_res": 2, "dread_aura": 0.18},
+    "mythril":      {"defence": 5, "max_hp": 12, "magic_res": 3, "dread_aura": 0.20},
+}
+
+# ----------------------------------------------------------------
+# Pumpkin Vine Totem  (accessory) — Candy shop purchase (12 candy)
+# Entangle attack: vines root the enemy. D&D-style d20 strength check
+# to break free. Charge-based — 1 candy per charge reload.
+# DC / vine_damage / max_turns / max_charges all scale with rarity.
+# ----------------------------------------------------------------
+PUMPKIN_VINE_TOTEM_STATS = {
+    "normal":       {"dc": 10, "vine_dmg": 2,  "max_turns": 2, "max_charges": 1},
+    "uncommon":     {"dc": 12, "vine_dmg": 4,  "max_turns": 2, "max_charges": 2},
+    "rare":         {"dc": 14, "vine_dmg": 6,  "max_turns": 3, "max_charges": 3},
+    "epic":         {"dc": 16, "vine_dmg": 8,  "max_turns": 3, "max_charges": 4},
+    "legendary":    {"dc": 18, "vine_dmg": 10, "max_turns": 4, "max_charges": 5},
+    "mythril":      {"dc": 20, "vine_dmg": 12, "max_turns": 4, "max_charges": 6},
+}

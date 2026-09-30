@@ -4,8 +4,20 @@
 
 import time
 import sys
+import random
 
-from shared import WHITE, RED, RESET, WIDTH, wrap, space, hp_bar
+from shared import WHITE, RED, GREEN, YELLOW, RESET, WIDTH, wrap, space, hp_bar
+
+# ---------------------------------------------------------------
+# XP BAR COLOR CONSTANTS
+# ---------------------------------------------------------------
+DIM_GRAY    = "\033[90m"   # empty bar blocks
+DIM_CYAN    = "\033[36m"   # 0-25%  — just starting out
+BRIGHT_GREEN = "\033[92m"  # 25-50% — making progress
+YELLOW_GREEN = "\033[33m"  # 50-75% — getting there
+BRIGHT_YELLOW = "\033[93m" # 75-99% — almost
+GOLD        = "\033[93m"   # 100%   — level up (sparkle base)
+BRIGHT_WHITE = "\033[97m"  # 100%   — sparkle highlight
 
 def berserk_meter(warrior, width=10):
     # Uses global colors: WHITE, RED, RESET
@@ -36,11 +48,43 @@ def berserk_meter(warrior, width=10):
 
 
 def xp_bar(current, needed, size=20):
+    """
+    Color-shifting XP bar:
+      0-25%  dim grey    — just started
+      25-50% green       — making progress
+      50-75% yellow-green — getting there
+      75-99% bright yellow — almost
+      100%   gold sparkle — LEVEL UP
+    """
     needed = max(1, int(needed))
     current = max(0, min(int(current), needed))
     filled = int(round((current / needed) * size))
+    if current > 0 and filled == 0:
+        filled = 1
     empty = size - filled
-    return "█" * filled + "░" * empty
+    ratio = current / needed
+
+    # --- GOLD SPARKLE at 100% ---
+    if ratio >= 1.0:
+        sparkle = ""
+        for _ in range(filled):
+            if random.random() < 0.3:
+                sparkle += BRIGHT_WHITE + "✦" + RESET
+            else:
+                sparkle += GOLD + "█" + RESET
+        return sparkle + DIM_GRAY + "░" * empty + RESET
+
+    # --- COLOR STAGES ---
+    if ratio >= 0.75:
+        color = BRIGHT_YELLOW
+    elif ratio >= 0.50:
+        color = YELLOW_GREEN
+    elif ratio >= 0.25:
+        color = BRIGHT_GREEN
+    else:
+        color = DIM_CYAN
+
+    return color + "█" * filled + RESET + DIM_GRAY + "░" * empty + RESET
 
 
 
@@ -273,7 +317,8 @@ def animate_xp_results(hero, gained_xp, size=22, duration=0.8, spend_points_fn=N
             t = i / frames
             virtual = int(round(start + chunk * t))
             bar = xp_bar(virtual, need, size=size)
-            sys.stdout.write(f"\rXP: [{bar}] {virtual}/{need}")
+            line = f"\rXP: [{bar}] {virtual}/{need}"
+            sys.stdout.write(line + " " * 10)  # trailing spaces clear old chars
             sys.stdout.flush()
             time.sleep(duration / frames)
 
@@ -283,10 +328,17 @@ def animate_xp_results(hero, gained_xp, size=22, duration=0.8, spend_points_fn=N
 
         # 3) Handle Level Up
         if hero.xp >= need:
-            # Flash effect
-            sys.stdout.write(f"\rXP: [{WHITE + ('█' * size) + RESET}] {need}/{need}")
-            sys.stdout.flush()
-            time.sleep(0.12)
+            # ✨ Gold sparkle flash — shimmer 5 times before level up
+            for _ in range(5):
+                sparkle_bar = ""
+                for _ in range(size):
+                    if random.random() < 0.35:
+                        sparkle_bar += BRIGHT_WHITE + "✦" + RESET
+                    else:
+                        sparkle_bar += GOLD + "█" + RESET
+                sys.stdout.write(f"\rXP: [{sparkle_bar}] {need}/{need}")
+                sys.stdout.flush()
+                time.sleep(0.08)
 
             # Reset XP to 0 for the NEXT level before calling level_up
             hero.xp = 0
@@ -294,20 +346,32 @@ def animate_xp_results(hero, gained_xp, size=22, duration=0.8, spend_points_fn=N
             # Level up (adds points, heals, etc.)
             hero.level_up()
 
-            sys.stdout.write("\n")
+            # Clear the sparkle line completely before printing level-up
+            sys.stdout.write("\r" + " " * (size + 40) + "\r")
+            sys.stdout.flush()
             print(f"✨ Level {hero.level} acquired! ✨")
 
             # Cap Check: If we hit max, kill remaining XP
             if getattr(hero, "level_cap", None) and hero.level >= hero.level_cap:
                 remaining = 0
                 hero.xp = 0
-        else:
-            if remaining <= 0:
-                sys.stdout.write("\n")
 
     # ✅ Pause ONCE after ALL bars/levels from this XP award are done
-    print(f"XP complete. Level {hero.level} | XP {hero.xp}/{int(hero.xp_to_lvl)}")
-    #input("Press ENTER to continue...")
+    # Clear any leftover animation \r line, then print the ONE final bar
+    sys.stdout.write("\r" + " " * (size + 40) + "\r")
+    sys.stdout.flush()
+
+    # If at level cap, show a full gold bar
+    if getattr(hero, "level_cap", None) and hero.level >= hero.level_cap:
+        cap_bar = GOLD + "█" * size + RESET
+        print(f"XP: [{cap_bar}] MAX")
+    elif hero.level > old_level and int(hero.xp) == 0:
+        # Just leveled up with no leftover XP — show fresh bar at 0
+        fresh_bar = xp_bar(0, int(hero.xp_to_lvl), size=size)
+        print(f"XP: [{fresh_bar}] 0/{int(hero.xp_to_lvl)}")
+    else:
+        final_bar = xp_bar(int(hero.xp), int(hero.xp_to_lvl), size=size)
+        print(f"XP: [{final_bar}] {int(hero.xp)}/{int(hero.xp_to_lvl)}")
 
     # 4) FINAL ACT: The point menu (Only once!)
     if hero.level > old_level:
